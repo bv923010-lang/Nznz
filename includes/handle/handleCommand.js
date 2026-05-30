@@ -13,11 +13,13 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     if (global.data.threadBanned.has(String(threadID))) return;
 
     const bodyTrim  = body.trim();
+    
+    // ── [পরিবর্তিত অংশ: নো-প্রিফিক্স ও প্রিফিক্স ডুয়াল রান ইঞ্জিন] ──
     const hasPrefix = bodyTrim.startsWith(PREFIX);
-    if (!hasPrefix && !global.config.BOT_MODES?.noPrefix) return;
-
     const withoutPrefix = hasPrefix ? bodyTrim.slice(PREFIX.length) : bodyTrim;
     const [commandName, ...args] = withoutPrefix.trim().split(/\s+/);
+    // ────────────────────────────────────────────────────────
+    
     if (!commandName) return;
 
     const cmd = global.client.commands.get(commandName.toLowerCase())
