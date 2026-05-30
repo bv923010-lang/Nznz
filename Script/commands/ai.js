@@ -1,21 +1,13 @@
-/*
- * ai.js — Fixed v3.3
- * ✅ module-level _history (this context bug নেই)
- * ✅ axios direct REST (SDK লাগে না)
- * ✅ Groq → Gemini fallback
- * ✅ handleReply conversation চালু
- * ✅ onStart + run দুটোই আছে
- */
 "use strict";
 
 const axios = require("axios");
-const _history = new Map(); // module-level — this context সমস্যা নেই
+const _history = new Map();
 
 module.exports = {
   config: {
     name: "ai",
     aliases: ["gpt", "ask", "chat", "gemini", "groq"],
-    version: "3.3.0",
+    version: "3.4.0",
     author: "Belal YT",
     countDown: 5,
     role: 0,
@@ -25,20 +17,18 @@ module.exports = {
     guide: { en: "{pn} <প্রশ্ন>" },
   },
 
-  onStart: async function (ctx) {
-    return module.exports.run(ctx);
-  },
+  onStart: async function (ctx) { return module.exports.run(ctx); },
 
-  run: async function ({ api, event }) {
+  run: async function ({ api, event, prefix, config }) {
     const { threadID, senderID, body, messageID } = event;
-    const PREFIX = global.config?.PREFIX || "/";
+    const pfx = prefix || config?.PREFIX || global.config?.PREFIX || "/";
 
     const query = (body || "")
       .replace(/^\/(ai|gpt|ask|chat|gemini|groq)\s*/i, "")
       .trim();
 
     if (!query) return api.sendMessage(
-      `🤖 AI সহায়তা\n\nব্যবহার: ${PREFIX}ai <প্রশ্ন>\nউদাহরণ: ${PREFIX}ai বাংলাদেশের রাজধানী?`,
+      `🤖 AI সহায়তা\n\nব্যবহার: ${pfx}ai <প্রশ্ন>\nউদাহরণ: ${pfx}ai বাংলাদেশের রাজধানী?`,
       threadID
     );
 
@@ -52,47 +42,61 @@ module.exports = {
 
     let response = null, model = "";
 
-    // Groq
+    // ── Groq — সঠিক model name ──────────────────────────
     try {
-      const k = global.config?.APIKEYS?.GROQ || process.env.GROQ_KEY || process.env.GROQ_API_KEY;
-      if (k && !k.startsWith("YOUR_")) {
+      const k = global.config?.APIKEYS?.GROQ
+             || process.env.GROQ_KEY
+             || process.env.GROQ_API_KEY;
+      if (k && k.length > 10) {
+        // llama-3.3-70b-versatile — 2025/2026 এর সঠিক model
         const r = await axios.post(
           "https://api.groq.com/openai/v1/chat/completions",
           {
-            model: "llama3-70b-8192",
+            model: "llama-3.3-70b-versatile",
             messages: [
-              { role: "system", content: "তুমি BELAL BOTX666, একটি বুদ্ধিমান বাংলা AI। সবসময় বাংলায় উত্তর দাও।" },
+              { role: "system", content: "তুমি BELAL BOTX666, একটি বুদ্ধিমান বাংলা AI সহায়তাকারী। সবসময় বাংলায় উত্তর দাও। সংক্ষিপ্ত ও স্পষ্ট হও।" },
               ...hist.slice(-10),
             ],
-            max_tokens: 1024, temperature: 0.7,
+            max_tokens: 1024,
+            temperature: 0.7,
           },
-          { headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" }, timeout: 25000 }
+          {
+            headers: {
+              Authorization: `Bearer ${k}`,
+              "Content-Type": "application/json",
+            },
+            timeout: 25000,
+          }
         );
         response = r.data?.choices?.[0]?.message?.content?.trim();
         model = "GROQ 🦙";
       }
-    } catch (e) { global.log?.warn(`Groq: ${e.message?.slice(0,80)}`); }
+    } catch (e) {
+      global.log?.warn(`Groq: ${e.response?.data?.error?.message || e.message?.slice(0,100)}`);
+    }
 
-    // Gemini fallback
+    // ── Gemini fallback ──────────────────────────────────
     if (!response) {
       try {
         const k = global.config?.APIKEYS?.GEMINI || process.env.GEMINI_API_KEY;
         if (k && !k.startsWith("YOUR_")) {
           const r = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${k}`,
-            { contents: [{ parts: [{ text: query }] }], generationConfig: { maxOutputTokens: 1024 } },
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${k}`,
+            { contents: [{ parts: [{ text: query }] }] },
             { timeout: 25000 }
           );
           response = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
           model = "GEMINI ✨";
         }
-      } catch (e) { global.log?.warn(`Gemini: ${e.message?.slice(0,80)}`); }
+      } catch (e) {
+        global.log?.warn(`Gemini: ${e.message?.slice(0,80)}`);
+      }
     }
 
     try { api.setMessageReaction(response ? "✅" : "❌", messageID, () => {}, true); } catch {}
 
     if (!response) return api.sendMessage(
-      `❌ AI উত্তর দিতে পারেনি।\n• Groq key চেক করুন\n• কিছুক্ষণ পর আবার চেষ্টা করুন।`,
+      `❌ AI উত্তর দিতে পারেনি।\n\nGroq Console: https://console.groq.com\nনতুন key নিয়ে config.json আপডেট করুন।`,
       threadID
     );
 
@@ -116,6 +120,7 @@ module.exports = {
     if (event.senderID !== handleReply.author) return;
     const newBody = (event.body || "").trim();
     if (!newBody) return;
-    await module.exports.run({ api, event: { ...event, body: newBody } });
+    await module.exports.run({ api, event: { ...event, body: newBody }, prefix: global.config?.PREFIX || "/" });
   },
 };
+      
