@@ -15,7 +15,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "fca-unofficial": "^1.6.3",
+    "fca-unofficial": "latest",
     "axios": "^1.7.0",
     "express": "^4.19.2",
     "sequelize": "^6.35.0",
