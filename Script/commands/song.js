@@ -1,123 +1,112 @@
 /*
- * song.js — Fixed Music Command v3.1
- * ✅ ytdl-core ব্যবহার (yt-dlp binary দরকার নেই)
- * ✅ Direct memory stream — disk write নেই
- * ✅ GitHub Actions / Render compatible
- * ✅ Error হলেও message পাঠায়, চুপ করে থাকে না
+ * song.js — Fixed v3.3
+ * ✅ External API দিয়ে download
+ * ✅ GoatWrapper নেই
+ * ✅ handleReply কাজ করে
  */
-"use strict";
+const axios = require("axios");
+const fs    = require("fs-extra");
+const path  = require("path");
 
-const axios         = require("axios");
-const ytSearch      = require("yt-search");
-const { PassThrough } = require("stream");
+const getApi = async () => {
+  const r = await axios.get(
+    "https://raw.githubusercontent.com/Mostakim0978/D1PT0/refs/heads/main/baseApiUrl.json",
+    { timeout: 10000 }
+  );
+  return r.data.api;
+};
 
 module.exports = {
   config: {
     name: "song",
     aliases: ["music", "play", "mp3", "audio", "গান"],
-    version: "3.1.0",
+    version: "3.3.0",
     author: "Belal YT",
-    countDown: 15,
+    countDown: 10,
     role: 0,
-    shortDescription: "গান ডাউনলোড করে পাঠায়",
-    category: "Media",
-    guide: "{pn} <গানের নাম>",
-    dependencies: {
-      "yt-search": "*",
-      "@distube/ytdl-core": "*",
-    },
+    hasPermssion: 0,
+    shortDescription: "গান সার্চ করে ডাউনলোড করে পাঠায়",
+    category: "media",
+    guide: { en: "{pn} <গানের নাম>" },
   },
 
-  async run({ api, event, args, message }) {
-    const { threadID } = event;
+  onStart: async function ({ api, event, args }) {
+    const { threadID, messageID, senderID } = event;
+    if (!args.length) return api.sendMessage(
+      "🎵 ব্যবহার: /song <গানের নাম>\nউদাহরণ: /song Bohemian Rhapsody", threadID, messageID
+    );
 
-    if (!args.length) {
-      return api.sendMessage(
-        "🎵 ব্যবহার: /song <গানের নাম>\nউদাহরণ: /song Bohemian Rhapsody",
-        threadID
-      );
-    }
-
-    const query = args.join(" ");
-
-    try { api.setMessageReaction("🔍", event.messageID, () => {}, true); } catch {}
-
-    // ── YouTube search ──────────────────────────────────────
-    let videoInfo;
+    const keyword = args.join(" ").trim();
     try {
-      const results = await ytSearch(query);
-      videoInfo = results?.videos?.[0];
-      if (!videoInfo?.url) throw new Error("কোনো গান পাওয়া যায়নি");
+      api.setMessageReaction("🔍", messageID, () => {}, true);
+      const base = await getApi();
+      const results = (await axios.get(
+        `${base}/ytFullSearch?songName=${encodeURIComponent(keyword)}`, { timeout: 15000 }
+      )).data.slice(0, 6);
+
+      if (!results.length) return api.sendMessage(`⭕ "${keyword}" এর কোনো গান পাওয়া যায়নি।`, threadID, messageID);
+
+      let msg = `🎵 "${keyword}"\n${"─".repeat(22)}\n\n`;
+      const thumbs = [];
+      for (let i = 0; i < results.length; i++) {
+        thumbs.push(streamImg(results[i].thumbnail, `st${i+1}.jpg`));
+        msg += `${i+1}. ${results[i].title}\n⏱️ ${results[i].time} | ${results[i].channel?.name||"?"}\n\n`;
+      }
+      msg += "👉 নম্বর দিয়ে reply করুন (১-৬)";
+
+      const imgs = await Promise.all(thumbs);
+      api.setMessageReaction("✅", messageID, () => {}, true);
+      api.sendMessage({ body: msg, attachment: imgs }, threadID, (err, info) => {
+        if (err || !info) return;
+        global.client.handleReply.push({
+          name: "song",
+          messageID: info.messageID,
+          author: senderID,
+          result: results,
+        });
+      }, messageID);
     } catch (e) {
-      try { api.setMessageReaction("❌", event.messageID, () => {}, true); } catch {}
-      return api.sendMessage(`❌ গান খুঁজে পাওয়া যায়নি: ${e.message}`, threadID);
+      api.setMessageReaction("❌", messageID, () => {}, true);
+      api.sendMessage(`❌ Search ব্যর্থ: ${e.message?.slice(0,100)}`, threadID, messageID);
     }
+  },
 
-    // Duration guard
-    const durSec = videoInfo.duration?.seconds || 0;
-    if (durSec > 600) {
-      try { api.setMessageReaction("❌", event.messageID, () => {}, true); } catch {}
-      return api.sendMessage(
-        `⛔ গানটি অনেক বড় (${videoInfo.duration?.timestamp})।\nসর্বোচ্চ ১০ মিনিটের গান সাপোর্টেড।`,
-        threadID
-      );
-    }
+  handleReply: async function ({ api, event, handleReply }) {
+    const { threadID, messageID, senderID, body } = event;
+    if (senderID !== handleReply.author) return;
+    const choice = parseInt(body);
+    if (isNaN(choice) || choice < 1 || choice > handleReply.result.length)
+      return api.sendMessage("❌ সঠিক নম্বর দিন (১-৬)।", threadID, messageID);
 
-    try { api.setMessageReaction("⏳", event.messageID, () => {}, true); } catch {}
+    const vid = handleReply.result[choice - 1];
+    try { await api.unsendMessage(handleReply.messageID); } catch {}
 
-    // ── Download via ytdl-core (memory stream) ──────────────
     try {
-      const ytdl = require("@distube/ytdl-core");
-
-      // Check if downloadable
-      if (!ytdl.validateURL(videoInfo.url)) throw new Error("Invalid URL");
-
-      const audioStream = ytdl(videoInfo.url, {
-        filter: "audioonly",
-        quality: "highestaudio",
-        highWaterMark: 1 << 25, // 32MB buffer
-      });
-
-      const pass = new PassThrough();
-      audioStream.pipe(pass);
-      pass.path = `${sanitize(videoInfo.title)}.mp3`;
-
-      // Error on stream
-      audioStream.on("error", (e) => {
-        log.error(`ytdl stream error: ${e.message}`);
-      });
-
-      try { api.setMessageReaction("✅", event.messageID, () => {}, true); } catch {}
-
-      return api.sendMessage(
-        {
-          body:
-            `🎵 ${videoInfo.title}\n` +
-            `👤 ${videoInfo.author?.name || "Unknown"}\n` +
-            `⏱️ ${videoInfo.duration?.timestamp || "?"}\n` +
-            `🎶 উপভোগ করুন!`,
-          attachment: pass,
-        },
-        threadID
+      api.setMessageReaction("⏳", messageID, () => {}, true);
+      const base = await getApi();
+      const { data: { title, downloadLink, quality } } = await axios.get(
+        `${base}/ytDl3?link=${vid.id}&format=mp3&quality=3`, { timeout: 40000 }
       );
-
-    } catch (streamErr) {
-      log.error(`song stream ব্যর্থ: ${streamErr.message}`);
-
-      // Fallback: send YouTube link
-      try { api.setMessageReaction("⚠️", event.messageID, () => {}, true); } catch {}
-      return api.sendMessage(
-        `⚠️ সরাসরি ডাউনলোড ব্যর্থ হয়েছে।\n\n` +
-        `🎵 ${videoInfo.title}\n` +
-        `⏱️ ${videoInfo.duration?.timestamp}\n` +
-        `🔗 YouTube Link:\n${videoInfo.url}\n\n` +
-        `ত্রুটি: ${streamErr.message?.slice(0, 100)}`,
-        threadID
+      const cacheDir = path.join(process.cwd(), "tmp");
+      await fs.ensureDir(cacheDir);
+      const filePath = path.join(cacheDir, `song_${Date.now()}.mp3`);
+      const buf = (await axios.get(downloadLink, { responseType: "arraybuffer", timeout: 60000 })).data;
+      await fs.writeFile(filePath, Buffer.from(buf));
+      await api.sendMessage(
+        { body: `🎵 ${title}\n📊 ${quality}\n🎶 উপভোগ করুন!`, attachment: fs.createReadStream(filePath) },
+        threadID, () => fs.remove(filePath).catch(()=>{}), messageID
       );
+      api.setMessageReaction("✅", messageID, () => {}, true);
+    } catch (e) {
+      api.setMessageReaction("❌", messageID, () => {}, true);
+      api.sendMessage(`❌ ডাউনলোড ব্যর্থ: ${e.message?.slice(0,100)}`, threadID, messageID);
     }
   },
 };
 
-function sanitize(name) {
-  return (name || "audio").replace(/[^\w\u0980-\u09FF _-]/g, "").slice(0, 60);
-}
+async function streamImg(url, name) {
+  const r = await axios.get(url, { responseType: "stream", timeout: 10000 });
+  r.data.path = name;
+  return r.data;
+                       }
+    
