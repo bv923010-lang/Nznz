@@ -1,174 +1,215 @@
-const axios = require("axios");
-const fs = require('fs');
+/*
+ * video.js — Premium Video Command
+ * ✅ Pre-download size validation (HEAD request)
+ * ✅ 25MB ceiling — auto falls back to audio if exceeded
+ * ✅ Zero disk write — PassThrough memory stream into Messenger
+ * ✅ No freezing on oversized videos
+ *
+ * Usage: /video <search query or URL>
+ */
 
-const baseApiUrl = async () => {
-  const base = await axios.get("https://raw.githubusercontent.com/Mostakim0978/D1PT0/refs/heads/main/baseApiUrl.json");
-  return base.data.api;
-};
+"use strict";
+
+const axios           = require("axios");
+const ytSearch        = require("yt-search");
+const { PassThrough } = require("stream");
+
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024;  // Messenger hard limit
+const MAX_DURATION_S  = 300;               // 5 min max for video
+const AUDIO_FALLBACK_MAX_S = 600;          // 10 min for audio fallback
 
 module.exports = {
   config: {
-    name: "video",
-    version: "1.1.4",
-    credits: "dipto", //fixed by Ullash 
-    countDown: 5,
-    hasPermssion: 0,
-    description: "Download video, audio, and info from YouTube",
-    category: "media",
-    commandCategory: "media",
-    usePrefix: true,
-    prefix: true,
-    usages:
-      " {pn} [video|-v] [<video name>|<video link>]\n" +
-      " {pn} [audio|-a] [<video name>|<video link>]\n" +
-      " {pn} [info|-i] [<video name>|<video link>]\n" +
-      "Example:\n" +
-      "{pn} -v chipi chipi chapa chapa\n" +
-      "{pn} -a chipi chipi chapa chapa\n" +
-      "{pn} -i chipi chipi chapa chapa"
+    name:        "video",
+    aliases:     ["vid", "ytdl", "yt"],
+    version:     "3.0.0",
+    author:      "Belal YT",
+    countDown:   20,
+    role:        0,
+    shortDescription: "ভিডিও ডাউনলোড করে পাঠায় (25MB সীমা স্বয়ংক্রিয়)",
+    longDescription:
+      "YouTube ভিডিও মেমোরি স্ট্রিমে পাঠায়। " +
+      "25MB এর বেশি হলে স্বয়ংক্রিয়ভাবে অডিওতে রূপান্তর করে।",
+    category:    "Media",
+    guide:       "{pn} <ভিডিও নাম বা URL>",
+    dependencies: {
+      "yt-search":   "*",
+      "yt-dlp-exec": "*",
+    },
   },
 
-  run: async ({ api, args, event }) => {
-    const { threadID, messageID, senderID } = event;
+  async run({ api, event, args, message }) {
+    const { threadID } = event;
 
-    let action = args[0] ? args[0].toLowerCase() : '-v';
+    if (!args.length)
+      return message.reply(
+        "🎬 ব্যবহার: /video <ভিডিওর নাম>\n" +
+        "উদাহরণ: /video Avengers Endgame trailer\n\n" +
+        "⚠️ ২৫MB এর বেশি হলে অটো MP3-তে পরিবর্তিত হবে।"
+      );
 
-    if (!['-v', 'video', 'mp4', '-a', 'audio', 'mp3', '-i', 'info'].includes(action)) {
-      args.unshift('-v');
-      action = '-v';
-    }
+    const query = args.join(" ");
+    await message.react("🔍");
 
-    const checkurl = /^(?:https?:\/\/)?(?:m\.|www\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))((\w|-){11})(?:\S+)?$/;
-    const urlYtb = args[1] ? checkurl.test(args[1]) : false;
-
-    if (urlYtb) {
-      const format = ['-v', 'video', 'mp4'].includes(action) ? 'mp4'
-        : ['-a', 'audio', 'mp3'].includes(action) ? 'mp3' : null;
-
-      if (!format) return api.sendMessage('❌ Invalid format. Use -v for video or -a for audio.', threadID, messageID);
-
-      try {
-        const match = args[1].match(checkurl);
-        const videoID = match ? match[1] : null;
-        if (!videoID) return api.sendMessage('❌ Invalid YouTube link.', threadID, messageID);
-
-        const path = `ytb_${format}_${videoID}.${format}`;
-        const { data: { title, downloadLink, quality } } = await axios.get(`${await baseApiUrl()}/ytDl3?link=${videoID}&format=${format}&quality=3`);
-
-        await api.sendMessage({
-          body: `• Title: ${title}\n• Quality: ${quality}`,
-          attachment: await downloadFile(downloadLink, path)
-        }, threadID, () => fs.unlinkSync(path), messageID);
-
-        return;
-      } catch (e) {
-        console.error(e);
-        return api.sendMessage('❌ Failed to download. Please try again later.', threadID, messageID);
-      }
-    }
-
-    args.shift(); 
-    const keyWord = args.join(" ");
-    if (!keyWord) return api.sendMessage('❌ Please provide a search keyword.', threadID, messageID);
-
+    // ── Search ──────────────────────────────────────────────────
+    let videoInfo;
     try {
-      const searchResult = (await axios.get(`${await baseApiUrl()}/ytFullSearch?songName=${encodeURIComponent(keyWord)}`)).data.slice(0, 6);
-      if (!searchResult.length) return api.sendMessage(`⭕ No results for keyword: ${keyWord}`, threadID, messageID);
-
-      let msg = "";
-      const thumbnails = [];
-      let i = 1;
-
-      for (const info of searchResult) {
-        thumbnails.push(streamImage(info.thumbnail, `thumbnail_${i}.jpg`));
-        msg += `${i++}. ${info.title}\nTime: ${info.time}\nChannel: ${info.channel.name}\n\n`;
-      }
-
-      api.sendMessage({
-        body: msg + "👉 Reply to this message with a number to select.",
-        attachment: await Promise.all(thumbnails)
-      }, threadID, (err, info) => {
-        if (err) return console.error(err);
-        global.client.handleReply.push({
-          name: module.exports.config.name,
-          messageID: info.messageID,
-          author: senderID,
-          result: searchResult,
-          action
-        });
-      }, messageID);
-    } catch (err) {
-      console.error(err);
-      return api.sendMessage("❌ An error occurred while searching: " + err.message, threadID, messageID);
-    }
-  },
-
-  handleReply: async ({ event, api, handleReply }) => {
-    const { threadID, messageID, senderID, body } = event;
-
-    if (senderID !== handleReply.author) return;
-    const { result, action } = handleReply;
-    const choice = parseInt(body);
-
-    if (isNaN(choice) || choice <= 0 || choice > result.length)
-      return api.sendMessage("❌ Invalid number. Please reply with a valid number.", threadID, messageID);
-
-    const selectedVideo = result[choice - 1];
-    const videoID = selectedVideo.id;
-
-    try {
-      await api.unsendMessage(handleReply.messageID);
+      const results = await ytSearch(query);
+      videoInfo     = results.videos?.[0];
+      if (!videoInfo) throw new Error("কোনো ভিডিও পাওয়া যায়নি");
     } catch (e) {
-      console.error("Unsend failed:", e);
+      await message.react("❌");
+      return message.reply(`❌ ভিডিও খুঁজে পাওয়া যায়নি: ${e.message}`);
     }
 
-    if (['-v', 'video', 'mp4', '-a', 'audio', 'mp3', 'music'].includes(action)) {
-      const format = ['-v', 'video', 'mp4'].includes(action) ? 'mp4' : 'mp3';
-      try {
-        const path = `ytb_${format}_${videoID}.${format}`;
-        const { data: { title, downloadLink, quality } } = await axios.get(`${await baseApiUrl()}/ytDl3?link=${videoID}&format=${format}&quality=3`);
+    const durSecs = videoInfo.duration?.seconds || 0;
+    let mode = "video";
 
-        await api.sendMessage({
-          body: `• Title: ${title}\n• Quality: ${quality}`,
-          attachment: await downloadFile(downloadLink, path)
-        }, threadID, () => fs.unlinkSync(path), messageID);
-      } catch (e) {
-        console.error(e);
-        return api.sendMessage('❌ Failed to download. Please try again later.', threadID, messageID);
+    if (durSecs > MAX_DURATION_S) {
+      if (durSecs > AUDIO_FALLBACK_MAX_S) {
+        await message.react("❌");
+        return message.reply(
+          `⛔ ভিডিওটি অনেক বড় (${videoInfo.duration?.timestamp})।\n` +
+          `সর্বোচ্চ ৫ মিনিটের ভিডিও বা ১০ মিনিটের অডিও সাপোর্টেড।\n` +
+          `🔗 ${videoInfo.url}`
+        );
       }
+      mode = "audio";
+      await message.reply(
+        `⚠️ ভিডিওটি ৫ মিনিটের বেশি।\nঅডিও হিসেবে পাঠানো হচ্ছে...`
+      );
     }
 
-    if (action === '-i' || action === 'info') {
-      try {
-        const { data } = await axios.get(`${await baseApiUrl()}/ytfullinfo?videoID=${videoID}`);
-        await api.sendMessage({
-          body: `✨ Title: ${data.title}\n⏳ Duration: ${(data.duration / 60).toFixed(2)} mins\n📺 Resolution: ${data.resolution}\n👀 Views: ${data.view_count}\n👍 Likes: ${data.like_count}\n💬 Comments: ${data.comment_count}\n📂 Category: ${data.categories[0]}\n📢 Channel: ${data.channel}\n🧍 Uploader ID: ${data.uploader_id}\n👥 Subscribers: ${data.channel_follower_count}\n🔗 Channel URL: ${data.channel_url}\n🔗 Video URL: ${data.webpage_url}`,
-          attachment: await streamImage(data.thumbnail, 'info_thumb.jpg')
-        }, threadID, messageID);
-      } catch (e) {
-        console.error(e);
-        return api.sendMessage('❌ Failed to retrieve video info.', threadID, messageID);
-      }
+    await message.react("⏳");
+
+    // ── Get download URL via yt-dlp ──────────────────────────────
+    let downloadUrl, ext;
+    try {
+      const ytdlp  = require("yt-dlp-exec");
+      const format = mode === "video"
+        ? "bestvideo[ext=mp4][filesize<25M]+bestaudio[ext=m4a]/best[ext=mp4][filesize<25M]/best"
+        : "bestaudio[ext=m4a]/bestaudio/best";
+
+      const info = await ytdlp(videoInfo.url, {
+        dumpSingleJson:    true,
+        noWarnings:        true,
+        noCallHome:        true,
+        preferFreeFormats: true,
+        format,
+        noPlaylist:        true,
+        addHeader:         ["referer:youtube.com", "user-agent:googlebot"],
+      });
+
+      downloadUrl = info?.url || info?.requested_downloads?.[0]?.url;
+      ext         = mode === "video" ? "mp4" : "mp3";
+      if (!downloadUrl) throw new Error("Download URL পাওয়া যায়নি");
+    } catch (e) {
+      await message.react("❌");
+      return message.reply(`❌ yt-dlp ব্যর্থ: ${e.message}\n🔗 ${videoInfo.url}`);
     }
-  }
+
+    // ── Pre-flight size check (HEAD request — avoids downloading) ──
+    try {
+      const head = await axios.head(downloadUrl, {
+        timeout: 10_000,
+        headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.youtube.com/" },
+        maxRedirects: 5,
+      });
+      const size = parseInt(head.headers["content-length"] || "0");
+
+      if (size > MAX_VIDEO_BYTES) {
+        if (mode === "video") {
+          // Fallback to audio instead of failing
+          await message.reply(
+            `⚠️ ভিডিও ফাইল ${(size / 1048576).toFixed(1)}MB — ২৫MB সীমা অতিক্রম!\n` +
+            `🎵 অডিও (MP3) ফর্ম্যাটে পাঠানো হচ্ছে...`
+          );
+          // Recurse as audio — set flag to prevent infinite loop
+          event._videoFallback = true;
+          args.unshift("--audio-only");
+          mode = "audio";
+          // Re-fetch audio URL
+          const ytdlp   = require("yt-dlp-exec");
+          const aInfo   = await ytdlp(videoInfo.url, {
+            dumpSingleJson: true, noWarnings: true,
+            format: "bestaudio[ext=m4a]/bestaudio/best",
+            noPlaylist: true,
+          });
+          downloadUrl = aInfo?.url;
+          ext = "mp3";
+          if (!downloadUrl) throw new Error("Fallback audio URL পাওয়া যায়নি");
+        } else {
+          await message.react("❌");
+          return message.reply(
+            `❌ অডিও ফাইলও ${(size / 1048576).toFixed(1)}MB — সীমার বাইরে।\n` +
+            `🔗 সরাসরি লিংক: ${videoInfo.url}`
+          );
+        }
+      }
+    } catch (headErr) {
+      // HEAD failed (some servers don't support it) — proceed anyway,
+      // Messenger will reject if too large.
+      log.warn(`HEAD চেক ব্যর্থ (${headErr.message}), স্ট্রিম চালিয়ে যাচ্ছি।`);
+    }
+
+    // ── MEMORY STREAM — Zero Disk Write ────────────────────────
+    try {
+      const response = await axios.get(downloadUrl, {
+        responseType: "stream",
+        timeout:      60_000,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+          "Referer":    "https://www.youtube.com/",
+        },
+        maxRedirects: 5,
+      });
+
+      // Live size guard on streaming content-length
+      const streamSize = parseInt(response.headers["content-length"] || "0");
+      if (streamSize > MAX_VIDEO_BYTES && mode === "video") {
+        response.data.destroy();
+        await message.react("❌");
+        return message.reply(
+          `❌ ফাইল ${(streamSize / 1048576).toFixed(1)}MB — ২৫MB সীমা অতিক্রম!\n` +
+          `🔗 ম্যানুয়াল লিংক: ${videoInfo.url}`
+        );
+      }
+
+      const pass = new PassThrough();
+      response.data.pipe(pass);
+      pass.path = `${sanitizeFilename(videoInfo.title)}.${ext}`;
+
+      const emoji = mode === "video" ? "🎬" : "🎵";
+      const msgBody = {
+        body:
+          `${emoji} ${videoInfo.title}\n` +
+          `👤 ${videoInfo.author?.name || "Unknown"}\n` +
+          `⏱️ ${videoInfo.duration?.timestamp || "?"}\n` +
+          (mode === "audio" ? "🔊 অডিও ফর্ম্যাট (ভিডিও ২৫MB সীমা)\n" : "") +
+          `👁️ ${formatViews(videoInfo.views)} views`,
+        attachment: pass,
+      };
+
+      await message.react("✅");
+      return api.sendMessage(msgBody, threadID);
+
+    } catch (streamErr) {
+      await message.react("❌");
+      return message.reply(
+        `❌ স্ট্রিম ব্যর্থ: ${streamErr.message}\n🔗 ${videoInfo.url}`
+      );
+    }
+  },
 };
 
-async function downloadFile(url, pathName) {
-  try {
-    const res = await axios.get(url, { responseType: "arraybuffer" });
-    fs.writeFileSync(pathName, Buffer.from(res.data));
-    return fs.createReadStream(pathName);
-  } catch (err) {
-    throw err;
-  }
+function sanitizeFilename(name) {
+  return (name || "video").replace(/[^a-zA-Z0-9\u0980-\u09FF _-]/g, "").slice(0, 60);
 }
 
-async function streamImage(url, pathName) {
-  try {
-    const response = await axios.get(url, { responseType: "stream" });
-    response.data.path = pathName;
-    return response.data;
-  } catch (err) {
-    throw err;
+function formatViews(n) {
+  if (!n) return "?";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
+  return String(n);
   }
-}
+        
