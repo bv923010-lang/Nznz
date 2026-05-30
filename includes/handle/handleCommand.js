@@ -5,9 +5,9 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     const { body = "", senderID, threadID, type } = event;
     if (!body || type === "message_unsend") return;
 
-    // ✅ Crash-proof config access
-    const PREFIX  = global.config?.PREFIX !== undefined ? global.config.PREFIX : "/";
-    const botID   = global.config?.botID;
+    // ✅ Crash-proof — কখনো undefined হবে না
+    const PREFIX   = global.config?.PREFIX !== undefined ? global.config.PREFIX : "/";
+    const botID    = global.config?.botID;
     const noPrefix = PREFIX === "" || PREFIX === null;
 
     if (senderID === botID) return;
@@ -16,18 +16,30 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
 
     const bodyTrim = body.trim();
 
-    // ══════════════════════════════════════════════════
-    //  PREFIX ENGINE — Strict One-or-the-Other switch
-    // ══════════════════════════════════════════════════
+    // ── PREFIX TRIGGERS (prefix ছাড়াই কাজ করে) ──────────
+    const bodyLower = bodyTrim.toLowerCase();
+    if (
+      bodyLower === "prefix" ||
+      bodyLower === "no prefix" ||
+      bodyLower === "noprefix" ||
+      bodyLower.startsWith("prefix +")
+    ) {
+      const prefixCmd = global.client.commands.get("prefix");
+      if (prefixCmd) {
+        const ctx = buildCtx({ api, event, args: bodyTrim.split(/\s+/).slice(1), models, Users, Threads, Currencies, PREFIX });
+        try { await runCmd(prefixCmd, ctx); } catch (e) { global.log?.error(`prefix: ${e.message}`); }
+      }
+      return;
+    }
+
+    // ── PREFIX ENGINE ─────────────────────────────────────
     let commandName, args;
 
     if (noPrefix) {
-      // NO-PREFIX MODE: যেকোনো plain message-এর প্রথম word = command
       const parts = bodyTrim.split(/\s+/);
       commandName  = parts[0]?.toLowerCase();
       args         = parts.slice(1);
     } else {
-      // PREFIX MODE: শুধুমাত্র prefix দিয়ে শুরু হলে process হবে
       if (!bodyTrim.startsWith(PREFIX)) return;
       const withoutPrefix = bodyTrim.slice(PREFIX.length).trim();
       const parts = withoutPrefix.split(/\s+/);
@@ -37,38 +49,18 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
 
     if (!commandName) return;
 
-    // ══════════════════════════════════════════════════
-    //  PREFIX COMMAND — special trigger (no prefix needed)
-    //  শুধুমাত্র hardcoded owner UIDs এর জন্য
-    // ══════════════════════════════════════════════════
-    const PREFIX_TRIGGERS = ["prefix", "no prefix"];
-    const isPrefixTrigger = PREFIX_TRIGGERS.some(t =>
-      bodyTrim.toLowerCase() === t || bodyTrim.toLowerCase().startsWith("prefix +")
-    );
-    if (isPrefixTrigger) {
-      const prefixCmd = global.client.commands.get("prefix");
-      if (prefixCmd) {
-        const ctx = buildCtx({ api, event, args: bodyTrim.split(/\s+/).slice(1), models, Users, Threads, Currencies });
-        try { await runCmd(prefixCmd, ctx); } catch (e) { global.log?.error(`prefix: ${e.message}`); }
-      }
-      return;
-    }
-
-    // ══════════════════════════════════════════════════
-    //  COMMAND LOOKUP
-    // ══════════════════════════════════════════════════
+    // ── COMMAND LOOKUP ────────────────────────────────────
     const cmd = global.client.commands.get(commandName)
              || [...global.client.commands.values()].find(c =>
                   c.config?.aliases?.map(a => a.toLowerCase()).includes(commandName)
                 );
     if (!cmd) return;
 
-    // Cooldown — সব framework field সাপোর্ট
+    // Cooldown
     const now    = Date.now();
     const cdKey  = `${senderID}:${cmd.config.name}`;
     const cdSecs = cmd.config.cooldowns ?? cmd.config.countDown
                 ?? cmd.config.coolDown  ?? global.config?.COOLDOWNS?.default ?? 3;
-
     if (global.client.cooldowns.has(cdKey)) {
       const expiry = global.client.cooldowns.get(cdKey);
       if (now < expiry) {
@@ -88,7 +80,7 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
 
     global.log?.cmd(`[${cmd.config.name}] → ${senderID} @ ${threadID}`);
 
-    const ctx = buildCtx({ api, event, args, models, Users, Threads, Currencies });
+    const ctx = buildCtx({ api, event, args, models, Users, Threads, Currencies, PREFIX });
     try { await runCmd(cmd, ctx); }
     catch (err) {
       global.log?.error(`[${cmd.config.name}] ত্রুটি: ${err.message}`);
@@ -97,12 +89,14 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
   };
 };
 
-// ── Universal context builder ────────────────────────────
-function buildCtx({ api, event, args, models, Users, Threads, Currencies }) {
+function buildCtx({ api, event, args, models, Users, Threads, Currencies, PREFIX }) {
   const { threadID, senderID, messageID } = event;
+  // ✅ prefix এবং config দুটোই pass করা হচ্ছে — help.js সহ সব command কাজ করবে
   return {
     api, event, args, models, Users, Threads, Currencies,
     threadID, senderID, messageID,
+    prefix: PREFIX,
+    config: global.config || {},
     message: {
       reply:  (m) => api.sendMessage(m, threadID),
       send:   (m, tid) => api.sendMessage(m, tid || threadID),
@@ -112,9 +106,9 @@ function buildCtx({ api, event, args, models, Users, Threads, Currencies }) {
   };
 }
 
-// ── Universal runner — onStart / run / onCall / _wrapped ─
 async function runCmd(cmd, ctx) {
   const runner = cmd.onStart || cmd.run || cmd.onCall;
   if (runner) return await runner(ctx);
   if (cmd._wrapped) return await cmd._wrapped(ctx);
-}
+        }
+    
