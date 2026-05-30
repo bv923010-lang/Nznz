@@ -1,23 +1,50 @@
+"use strict";
+const axios = require("axios");
 const fs = require("fs-extra");
-const request = require("request");
+const path = require("path");
+
+const IMGUR_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Referer": "https://imgur.com/",
+  "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Connection": "keep-alive"
+};
+
+async function downloadFile(url, filePath) {
+  const response = await axios({
+    method: "GET",
+    url,
+    responseType: "stream",
+    headers: IMGUR_HEADERS,
+    timeout: 25000,
+    maxRedirects: 5
+  });
+  await fs.ensureDir(path.dirname(filePath));
+  const writer = fs.createWriteStream(filePath);
+  response.data.pipe(writer);
+  return new Promise((resolve, reject) => {
+    writer.on("finish", resolve);
+    writer.on("error", reject);
+    response.data.on("error", reject);
+  });
+}
 
 module.exports.config = {
- name: "mim",
- version: "1.0.1",
- hasPermssion: 0,
- credits: "BELAL BOTX666",
- description: "bk pp",
- commandCategory: "Random-IMG",
- usages: "bk pp",
- cooldowns: 2,
- dependencies: {
- "request": "",
- "fs-extra": ""
- }
+  name: "mim",
+  version: "2.0.0",
+  hasPermssion: 0,
+  credits: "BELAL BOTX666",
+  description: "র‍্যান্ডম মিম ছবি - ULTRA FAST",
+  commandCategory: "Random-IMG",
+  usages: "mim",
+  cooldowns: 2
 };
 
 module.exports.run = async ({ api, event }) => {
- const imgLinks = [
+  const { threadID, messageID, senderID } = event;
+
+  const imgLinks = [
 "https://i.imgur.com/riMo2q4.jpeg",
 "https://i.imgur.com/EsVSDvf.jpeg",
 "https://i.imgur.com/J43TM5C.jpeg",
@@ -237,16 +264,24 @@ module.exports.run = async ({ api, event }) => {
 "https://i.imgur.com/vlPOfph.jpeg",
 "https://i.imgur.com/gA996Yj.jpeg",
 "https://i.imgur.com/HzjaJYr.jpeg",];
+  ];
 
- const selectedImage = imgLinks[Math.floor(Math.random() * imgLinks.length)];
- const filePath = `${__dirname}/cache/fb_boy.jpg`;
+  const randomLink = imgLinks[Math.floor(Math.random() * imgLinks.length)];
+  const ext = randomLink.includes(".png") ? "png" : "jpg";
+  const filePath = path.join(process.cwd(), "tmp", `mim_${senderID}_${Date.now()}.${ext}`);
 
- const callback = () => {
- api.sendMessage({
- body: "😁😆😸🙊",
- attachment: fs.createReadStream(filePath)
- }, event.threadID, () => fs.unlinkSync(filePath));
- };
-
- request(encodeURI(selectedImage)).pipe(fs.createWriteStream(filePath)).on("close", callback);
+  try {
+    api.setMessageReaction("⏳", messageID, () => {}, true);
+    await downloadFile(randomLink, filePath);
+    await api.sendMessage({
+      body: "┄┉❈✡️⋆⃝চাঁদেড়~পাহাড়✿⃝🪬❈┉┄",
+      attachment: fs.createReadStream(filePath)
+    }, threadID, messageID);
+    api.setMessageReaction("✅", messageID, () => {}, true);
+  } catch (err) {
+    api.setMessageReaction("❌", messageID, () => {}, true);
+    api.sendMessage(`❌ ছবি আনতে ব্যর্থ। আবার চেষ্টা করুন।`, threadID, messageID);
+  } finally {
+    fs.remove(filePath).catch(() => {});
+  }
 };
