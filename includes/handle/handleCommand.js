@@ -5,17 +5,19 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     const { body = "", senderID, threadID, type } = event;
     if (!body || type === "message_unsend") return;
 
-    const PREFIX = global.config?.PREFIX || "/";
-    const botID  = global.config?.botID;
+    // 🛡️ ক্র্যাশ প্রটেকশন সহ প্রিফিক্স হ্যান্ডলিং (global.config বা PREFIX ডিফাইন না থাকলেও ক্র্যাশ করবে না)
+    const currentConfig = global.config || {};
+    const PREFIX = currentConfig.PREFIX !== undefined ? currentConfig.PREFIX : "/";
+    const botID  = currentConfig.botID;
 
-    if (senderID === botID) return;
-    if (global.data.userBanned.has(String(senderID))) return;
-    if (global.data.threadBanned.has(String(threadID))) return;
+    if (botID && String(senderID) === String(botID)) return;
+    if (global.data?.userBanned?.has(String(senderID))) return;
+    if (global.data?.threadBanned?.has(String(threadID))) return;
 
     const bodyTrim  = body.trim();
     
-    // ── [পরিবর্তিত অংশ: নো-প্রিফিক্স ও প্রিফিক্স ডুয়াল রান ইঞ্জিন] ──
-    const hasPrefix = bodyTrim.startsWith(PREFIX);
+    // ── [নো-প্রিফিক্স ও প্রিফিক্স ডুয়াল রান ইঞ্জিন লজিক] ──
+    const hasPrefix = PREFIX !== "" && bodyTrim.startsWith(PREFIX);
     const withoutPrefix = hasPrefix ? bodyTrim.slice(PREFIX.length) : bodyTrim;
     const [commandName, ...args] = withoutPrefix.trim().split(/\s+/);
     // ────────────────────────────────────────────────────────
@@ -32,7 +34,7 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     const now    = Date.now();
     const cdKey  = `${senderID}:${cmd.config.name}`;
     const cdSecs = cmd.config.cooldowns ?? cmd.config.countDown
-                ?? cmd.config.coolDown  ?? global.config.COOLDOWNS?.default ?? 3;
+                ?? cmd.config.coolDown  ?? currentConfig.COOLDOWNS?.default ?? 3;
     if (global.client.cooldowns.has(cdKey)) {
       const expiry = global.client.cooldowns.get(cdKey);
       if (now < expiry) {
@@ -45,7 +47,7 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     // Admin guard — role/hasPermssion দুটোই সাপোর্ট
     const role = cmd.config.role ?? cmd.config.hasPermssion ?? 0;
     if (role >= 1) {
-      const admins = global.config?.ADMINBOT || [];
+      const admins = currentConfig.ADMINBOT || [];
       if (!admins.includes(String(senderID)))
         return api.sendMessage("🔒 এই কমান্ডটি শুধুমাত্র অ্যাডমিনের জন্য।", threadID);
     }
@@ -54,10 +56,6 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // UNIVERSAL RUNNER — সব framework সাপোর্ট
-    // GoatBot:  onStart({ api, event, args, ... })
-    // Mirai:    run({ api, event, args, ... })
-    // Legacy:   run({ api, event, args, ... })
-    // Wrapped:  _wrapped(...)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const ctx = {
       api, event, args, models, Users, Threads, Currencies,
@@ -83,3 +81,4 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     }
   };
 };
+        
