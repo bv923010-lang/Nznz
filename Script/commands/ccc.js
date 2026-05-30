@@ -7,7 +7,7 @@ module.exports = {
   config: {
     name: "ccc",
     aliases: ["slap", "chora"],
-    version: "3.4.0",
+    version: "3.5.0",
     author: `${mysterious}`,
     countDown: 2,     
     role: 0,          
@@ -60,13 +60,35 @@ module.exports = {
     const tag = (mentions[targetID] || "").replace("@", "");
     const randomLink = link[Math.floor(Math.random() * link.length)];
 
+    let responseData = null;
+    let retries = 2; // ফর্মের নিয়ম অনুযায়ী ২ বার ট্রাই করবে ফেইল করলে
+
+    // Axios দিয়ে দ্রুত মেমরিতে বাফার ডাউনলোড করা (Disk Write মুক্ত)
+    while (retries > 0 && !responseData) {
+      try {
+        const res = await axios.get(randomLink, {
+          responseType: "arraybuffer",
+          timeout: 15000,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          }
+        });
+        responseData = res.data;
+      } catch (err) {
+        retries--;
+        if (retries === 0) {
+          try { api.setMessageReaction("❌", messageID, () => {}, true); } catch {}
+          return api.sendMessage(`❌ ত্রুটি: GIF ডাউনলোড করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।`, threadID, messageID);
+        }
+      }
+    }
+
     try {
-      // ✅ সুপার মেথড: সার্ভারে কোনো ফাইল ডাউনলোড বা রাইট হবে না।
-      // সরাসরি URL থেকে ফেসবুক ১ সেকেন্ডে GIF রেন্ডার করে গ্রুপে পাঠিয়ে দেবে!
-      const stream = (await axios.get(randomLink, { 
-        responseType: "stream",
-        timeout: 15000 
-      })).data;
+      // মেমরিতে থাকা বাফারকে সরাসরি স্ট্রিম বানিয়ে পাঠানো (যা সুপার ফাস্ট এবং ক্র্যাশ করবে না)
+      const streamifier = require("stream");
+      const bufferStream = new streamifier.Readable();
+      bufferStream.push(responseData);
+      bufferStream.push(null);
 
       // সফল রিয়্যাকশন টিক (✅)
       try { api.setMessageReaction("✅", messageID, () => {}, true); } catch {}
@@ -74,14 +96,12 @@ module.exports = {
       return api.sendMessage({
         body: `╭──────•◈•───────╮\n\n\n 🖕🖕 @${tag}\n\n  আই চুষে দিব 🥵 🤏\n\n\n╰──────•◈•───────╯`,
         mentions: [{ tag: `@${tag}`, id: targetID }],
-        attachment: stream // ডিরেক্ট ক্যাশলেস স্ট্রিম পুশ
+        attachment: bufferStream // কোনো ফাইল ক্রিয়েট ছাড়াই মেমরি থেকে সরাসরি সেন্ড
       }, threadID, messageID);
 
     } catch (e) {
-      // এরর হ্যান্ডেলিং এবং ❌ রিয়্যাকশন
       try { api.setMessageReaction("❌", messageID, () => {}, true); } catch {}
-      return api.sendMessage(`❌ ত্রুটি: ইমেগুর সার্ভার থেকে GIF লোড করা যায়নি। আবার চেষ্টা করুন।`, threadID, messageID);
+      return api.sendMessage(`❌ ত্রুটি: মেসেজ পাঠাতে সমস্যা হয়েছে।`, threadID, messageID);
     }
   }
 };
-        
