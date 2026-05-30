@@ -50,7 +50,7 @@
   },
 
   "APIKEYS": {
-    "GROQ": "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",
+    "GROQ": "",
     "GEMINI": "YOUR_GEMINI_API_KEY_HERE",
     "OPENAI": "YOUR_OPENAI_API_KEY_HERE",
     "OPEN_WEATHER": "YOUR_OPENWEATHER_KEY_HERE",
