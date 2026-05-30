@@ -7,7 +7,7 @@ module.exports = {
   config: {
     name: "ccc",
     aliases: ["slap", "chora"],
-    version: "3.5.0",
+    version: "3.6.0",
     author: `${mysterious}`,
     countDown: 2,     
     role: 0,          
@@ -20,7 +20,7 @@ module.exports = {
   onStart: async function ({ api, event }) {
     const { threadID, messageID, mentions } = event;
 
-    // ১. শুরুতে ⏳ রিয়্যাকশন দিয়ে ইউজারকে জানানো
+    // ১. শুরুতে ⏳ রিয়্যাকশন
     try { api.setMessageReaction("⏳", messageID, () => {}, true); } catch {}
 
     const link = [
@@ -58,50 +58,5 @@ module.exports = {
 
     const targetID = mentionIDs[0];
     const tag = (mentions[targetID] || "").replace("@", "");
-    const randomLink = link[Math.floor(Math.random() * link.length)];
-
-    let responseData = null;
-    let retries = 2; // ফর্মের নিয়ম অনুযায়ী ২ বার ট্রাই করবে ফেইল করলে
-
-    // Axios দিয়ে দ্রুত মেমরিতে বাফার ডাউনলোড করা (Disk Write মুক্ত)
-    while (retries > 0 && !responseData) {
-      try {
-        const res = await axios.get(randomLink, {
-          responseType: "arraybuffer",
-          timeout: 15000,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          }
-        });
-        responseData = res.data;
-      } catch (err) {
-        retries--;
-        if (retries === 0) {
-          try { api.setMessageReaction("❌", messageID, () => {}, true); } catch {}
-          return api.sendMessage(`❌ ত্রুটি: GIF ডাউনলোড করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।`, threadID, messageID);
-        }
-      }
-    }
-
-    try {
-      // মেমরিতে থাকা বাফারকে সরাসরি স্ট্রিম বানিয়ে পাঠানো (যা সুপার ফাস্ট এবং ক্র্যাশ করবে না)
-      const streamifier = require("stream");
-      const bufferStream = new streamifier.Readable();
-      bufferStream.push(responseData);
-      bufferStream.push(null);
-
-      // সফল রিয়্যাকশন টিক (✅)
-      try { api.setMessageReaction("✅", messageID, () => {}, true); } catch {}
-
-      return api.sendMessage({
-        body: `╭──────•◈•───────╮\n\n\n 🖕🖕 @${tag}\n\n  আই চুষে দিব 🥵 🤏\n\n\n╰──────•◈•───────╯`,
-        mentions: [{ tag: `@${tag}`, id: targetID }],
-        attachment: bufferStream // কোনো ফাইল ক্রিয়েট ছাড়াই মেমরি থেকে সরাসরি সেন্ড
-      }, threadID, messageID);
-
-    } catch (e) {
-      try { api.setMessageReaction("❌", messageID, () => {}, true); } catch {}
-      return api.sendMessage(`❌ ত্রুটি: মেসেজ পাঠাতে সমস্যা হয়েছে।`, threadID, messageID);
-    }
-  }
-};
+    const randomLink = link
+    
