@@ -5,7 +5,7 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     const { body = "", senderID, threadID, type } = event;
     if (!body || type === "message_unsend") return;
 
-    // 🛡️ ক্র্যাশ প্রটেকশন সহ প্রিফিক্স হ্যান্ডলিং (global.config বা PREFIX ডিফাইন না থাকলেও ক্র্যাশ করবে না)
+    // 🛡️ ক্র্যাশ প্রটেকশন সহ প্রিফিক্স ও কনফিগ হ্যান্ডলিং
     const currentConfig = global.config || {};
     const PREFIX = currentConfig.PREFIX !== undefined ? currentConfig.PREFIX : "/";
     const botID  = currentConfig.botID;
@@ -18,6 +18,11 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     
     // ── [নো-প্রিফিক্স ও প্রিফিক্স ডুয়াল রান ইঞ্জিন লজিক] ──
     const hasPrefix = PREFIX !== "" && bodyTrim.startsWith(PREFIX);
+    
+    // 🛡️ এখানে ক্র্যাশ প্রটেকশন দেওয়া হলো যেন BOT_MODES বা config না থাকলে ক্র্যাশ না করে
+    const isNoPrefixAllowed = currentConfig.BOT_MODES?.noPrefix ?? true; 
+    if (!hasPrefix && !isNoPrefixAllowed) return;
+
     const withoutPrefix = hasPrefix ? bodyTrim.slice(PREFIX.length) : bodyTrim;
     const [commandName, ...args] = withoutPrefix.trim().split(/\s+/);
     // ────────────────────────────────────────────────────────
