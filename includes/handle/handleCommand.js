@@ -5,38 +5,70 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     const { body = "", senderID, threadID, type } = event;
     if (!body || type === "message_unsend") return;
 
-    // 🛡️ সম্পূর্ণ ক্র্যাশ প্রটেকশন ও ডেড-লক গার্ড সিস্টেম
-    const currentConfig = global.config || {};
-    const PREFIX = currentConfig.PREFIX !== undefined ? currentConfig.PREFIX : "/";
-    const botID  = currentConfig.botID;
+    // ✅ Crash-proof config access
+    const PREFIX  = global.config?.PREFIX !== undefined ? global.config.PREFIX : "/";
+    const botID   = global.config?.botID;
+    const noPrefix = PREFIX === "" || PREFIX === null;
 
-    if (botID && String(senderID) === String(botID)) return;
+    if (senderID === botID) return;
     if (global.data?.userBanned?.has(String(senderID))) return;
     if (global.data?.threadBanned?.has(String(threadID))) return;
 
-    const bodyTrim  = body.trim();
-    
-    // ── [নো-প্রিফিক্স ও প্রিফিক্স ডুয়াল রান ইঞ্জিন লজিক] ──
-    const hasPrefix = PREFIX !== "" && bodyTrim.startsWith(PREFIX);
-    const withoutPrefix = hasPrefix ? bodyTrim.slice(PREFIX.length) : bodyTrim;
-    const [commandName, ...args] = withoutPrefix.trim().split(/\s+/);
-    // ────────────────────────────────────────────────────────
-    
+    const bodyTrim = body.trim();
+
+    // ══════════════════════════════════════════════════
+    //  PREFIX ENGINE — Strict One-or-the-Other switch
+    // ══════════════════════════════════════════════════
+    let commandName, args;
+
+    if (noPrefix) {
+      // NO-PREFIX MODE: যেকোনো plain message-এর প্রথম word = command
+      const parts = bodyTrim.split(/\s+/);
+      commandName  = parts[0]?.toLowerCase();
+      args         = parts.slice(1);
+    } else {
+      // PREFIX MODE: শুধুমাত্র prefix দিয়ে শুরু হলে process হবে
+      if (!bodyTrim.startsWith(PREFIX)) return;
+      const withoutPrefix = bodyTrim.slice(PREFIX.length).trim();
+      const parts = withoutPrefix.split(/\s+/);
+      commandName  = parts[0]?.toLowerCase();
+      args         = parts.slice(1);
+    }
+
     if (!commandName) return;
 
-    const cmd = global.client.commands.get(commandName.toLowerCase())
+    // ══════════════════════════════════════════════════
+    //  PREFIX COMMAND — special trigger (no prefix needed)
+    //  শুধুমাত্র hardcoded owner UIDs এর জন্য
+    // ══════════════════════════════════════════════════
+    const PREFIX_TRIGGERS = ["prefix", "no prefix"];
+    const isPrefixTrigger = PREFIX_TRIGGERS.some(t =>
+      bodyTrim.toLowerCase() === t || bodyTrim.toLowerCase().startsWith("prefix +")
+    );
+    if (isPrefixTrigger) {
+      const prefixCmd = global.client.commands.get("prefix");
+      if (prefixCmd) {
+        const ctx = buildCtx({ api, event, args: bodyTrim.split(/\s+/).slice(1), models, Users, Threads, Currencies });
+        try { await runCmd(prefixCmd, ctx); } catch (e) { global.log?.error(`prefix: ${e.message}`); }
+      }
+      return;
+    }
+
+    // ══════════════════════════════════════════════════
+    //  COMMAND LOOKUP
+    // ══════════════════════════════════════════════════
+    const cmd = global.client.commands.get(commandName)
              || [...global.client.commands.values()].find(c =>
-                  c.config?.aliases?.map(a => a.toLowerCase()).includes(commandName.toLowerCase())
+                  c.config?.aliases?.map(a => a.toLowerCase()).includes(commandName)
                 );
-                
-    // যদি কোনো কমান্ডের নাম না মেলে, তবে সাধারণ চ্যাট মনে করে বট কোনো এরর না দিয়ে চুপ থাকবে
     if (!cmd) return;
 
-    // Cooldown — সব framework এর field name সাপোর্ট
+    // Cooldown — সব framework field সাপোর্ট
     const now    = Date.now();
     const cdKey  = `${senderID}:${cmd.config.name}`;
     const cdSecs = cmd.config.cooldowns ?? cmd.config.countDown
-                ?? cmd.config.coolDown  ?? currentConfig.COOLDOWNS?.default ?? 3;
+                ?? cmd.config.coolDown  ?? global.config?.COOLDOWNS?.default ?? 3;
+
     if (global.client.cooldowns.has(cdKey)) {
       const expiry = global.client.cooldowns.get(cdKey);
       if (now < expiry) {
@@ -46,40 +78,43 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     }
     if (cdSecs > 0) global.client.cooldowns.set(cdKey, now + cdSecs * 1000);
 
-    // Admin guard — role/hasPermssion দুটোই সাপোর্ট
+    // Admin guard
     const role = cmd.config.role ?? cmd.config.hasPermssion ?? 0;
     if (role >= 1) {
-      const admins = currentConfig.ADMINBOT || [];
+      const admins = global.config?.ADMINBOT || [];
       if (!admins.includes(String(senderID)))
         return api.sendMessage("🔒 এই কমান্ডটি শুধুমাত্র অ্যাডমিনের জন্য।", threadID);
     }
 
-    global.log.cmd(`[${cmd.config.name}] → ${senderID} @ ${threadID}`);
+    global.log?.cmd(`[${cmd.config.name}] → ${senderID} @ ${threadID}`);
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // UNIVERSAL RUNNER — সব framework সাপোর্ট
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const ctx = {
-      api, event, args, models, Users, Threads, Currencies,
-      threadID, messageID: event.messageID, senderID,
-      message: {
-        reply:  (m) => api.sendMessage(m, threadID),
-        send:   (m, tid) => api.sendMessage(m, tid || threadID),
-        react:  (e) => api.setMessageReaction(e, event.messageID, () => {}, true),
-        unsend: (m) => api.unsendMessage(m),
-      },
-    };
-
-    try {
-      const runner = cmd.onStart || cmd.run || cmd.onCall;
-      if (runner) {
-        await runner(ctx);
-      } else if (cmd._wrapped) {
-        await cmd._wrapped(ctx);
-      }
-    } catch (err) {
-      global.log.error(`[${cmd.config.name}] ত্রুটি: ${err.message}`);
+    const ctx = buildCtx({ api, event, args, models, Users, Threads, Currencies });
+    try { await runCmd(cmd, ctx); }
+    catch (err) {
+      global.log?.error(`[${cmd.config.name}] ত্রুটি: ${err.message}`);
       try { api.sendMessage(`❌ ${err.message?.slice(0, 150)}`, threadID); } catch {}
     }
   };
 };
+
+// ── Universal context builder ────────────────────────────
+function buildCtx({ api, event, args, models, Users, Threads, Currencies }) {
+  const { threadID, senderID, messageID } = event;
+  return {
+    api, event, args, models, Users, Threads, Currencies,
+    threadID, senderID, messageID,
+    message: {
+      reply:  (m) => api.sendMessage(m, threadID),
+      send:   (m, tid) => api.sendMessage(m, tid || threadID),
+      react:  (e) => api.setMessageReaction(e, messageID, () => {}, true),
+      unsend: (m) => api.unsendMessage(m),
+    },
+  };
+}
+
+// ── Universal runner — onStart / run / onCall / _wrapped ─
+async function runCmd(cmd, ctx) {
+  const runner = cmd.onStart || cmd.run || cmd.onCall;
+  if (runner) return await runner(ctx);
+  if (cmd._wrapped) return await cmd._wrapped(ctx);
+}
