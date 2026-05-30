@@ -1,166 +1,89 @@
-/*
- * video.js — Fixed Video Command v3.1
- * ✅ ytdl-core ব্যবহার (yt-dlp binary দরকার নেই)
- * ✅ 25MB ceiling — size check করে আগেই
- * ✅ বড় হলে auto audio fallback
- * ✅ Error হলেও YouTube link পাঠায়, freeze করে না
- * ✅ Memory stream — disk write নেই
- */
-"use strict";
+const axios = require("axios");
+const fs = require("fs");
 
-const ytSearch        = require("yt-search");
-const { PassThrough } = require("stream");
-
-const MAX_VIDEO_BYTES = 24 * 1024 * 1024; // 24MB (Messenger limit ~25MB)
-const MAX_VID_SECS    = 300;  // 5 min video max
-const MAX_AUD_SECS    = 600;  // 10 min audio max
+// বেস API URL (আপনার দেওয়া দ্বিতীয় ফাইল থেকে নেওয়া)
+const getBaseApi = async () => {
+  const res = await axios.get("https://raw.githubusercontent.com/Mostakim0978/D1PT0/refs/heads/main/baseApiUrl.json");
+  return res.data.api;
+};
 
 module.exports = {
   config: {
     name: "video",
-    aliases: ["vid", "yt", "ytdl", "ভিডিও"],
-    version: "3.1.0",
-    author: "Belal YT",
-    countDown: 20,
+    aliases: ["vid", "yt", "ভিডিও"],
+    version: "3.2.0",
+    author: "Belal YT (API fixed)",
+    countDown: 15,
     role: 0,
-    shortDescription: "ভিডিও ডাউনলোড করে পাঠায় (25MB auto fallback)",
+    shortDescription: "YouTube ভিডিও ডাউনলোড করে (API based)",
     category: "Media",
-    guide: "{pn} <ভিডিওর নাম>",
-    dependencies: {
-      "yt-search": "*",
-      "@distube/ytdl-core": "*",
-    },
+    guide: "{pn} <ভিডিওর নাম বা লিংক>",
   },
 
-  async run({ api, event, args, message }) {
-    const { threadID } = event;
-
-    if (!args.length) {
-      return api.sendMessage(
-        "🎬 ব্যবহার: /video <ভিডিওর নাম>\n" +
-        "উদাহরণ: /video Avengers trailer\n\n" +
-        "⚠️ ২৫MB এর বেশি হলে অটো MP3-তে পরিবর্তিত হবে।",
-        threadID
-      );
-    }
-
+  async run({ api, event, args }) {
+    const { threadID, messageID } = event;
     const query = args.join(" ");
 
-    try { api.setMessageReaction("🔍", event.messageID, () => {}, true); } catch {}
-
-    // ── YouTube search ──────────────────────────────────────
-    let videoInfo;
-    try {
-      const results = await ytSearch(query);
-      videoInfo = results?.videos?.[0];
-      if (!videoInfo?.url) throw new Error("কোনো ভিডিও পাওয়া যায়নি");
-    } catch (e) {
-      try { api.setMessageReaction("❌", event.messageID, () => {}, true); } catch {}
-      return api.sendMessage(`❌ ভিডিও খুঁজে পাওয়া যায়নি: ${e.message}`, threadID);
-    }
-
-    const durSec = videoInfo.duration?.seconds || 0;
-
-    // Too long for anything
-    if (durSec > MAX_AUD_SECS) {
-      try { api.setMessageReaction("❌", event.messageID, () => {}, true); } catch {}
+    if (!query) {
       return api.sendMessage(
-        `⛔ ভিডিওটি অনেক বড় (${videoInfo.duration?.timestamp})।\n` +
-        `সর্বোচ্চ ৫ মিনিটের ভিডিও বা ১০ মিনিটের অডিও সাপোর্টেড।\n` +
-        `🔗 ${videoInfo.url}`,
+        "🎬 ব্যবহার: /video <ভিডিওর নাম বা ইউটিউব লিংক>\nউদাহরণ: /video Arijit Singh songs",
         threadID
       );
     }
 
-    // Too long for video → audio mode
-    const forceAudio = durSec > MAX_VID_SECS;
-    if (forceAudio) {
-      api.sendMessage(
-        `⚠️ ভিডিওটি ৫ মিনিটের বেশি (${videoInfo.duration?.timestamp})।\n` +
-        `🎵 অডিও হিসেবে পাঠানো হচ্ছে...`,
-        threadID
-      );
-    }
+    try { api.setMessageReaction("🔍", messageID, () => {}, true); } catch {}
 
-    try { api.setMessageReaction("⏳", event.messageID, () => {}, true); } catch {}
+    // চেক করা লিংক নাকি কিওয়ার্ড
+    const ytRegex = /^(?:https?:\/\/)?(?:m\.|www\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/;
+    const match = query.match(ytRegex);
+    let videoId = match ? match[1] : null;
 
-    // ── Download via ytdl-core ──────────────────────────────
     try {
-      const ytdl = require("@distube/ytdl-core");
-      if (!ytdl.validateURL(videoInfo.url)) throw new Error("Invalid URL");
+      const baseApi = await getBaseApi();
 
-      let dlStream, ext, mode;
-
-      if (forceAudio) {
-        // Audio only stream
-        dlStream = ytdl(videoInfo.url, {
-          filter: "audioonly",
-          quality: "highestaudio",
-          highWaterMark: 1 << 25,
-        });
-        ext  = "mp3";
-        mode = "audio";
-      } else {
-        // Try video — use lowest reasonable quality to stay under 25MB
-        dlStream = ytdl(videoInfo.url, {
-          filter: (format) =>
-            format.container === "mp4" &&
-            format.hasVideo &&
-            format.hasAudio &&
-            (format.height || 9999) <= 480,
-          quality: "lowest",
-          highWaterMark: 1 << 25,
-        });
-        ext  = "mp4";
-        mode = "video";
+      // যদি লিংক না হয়, তাহলে সার্চ করে প্রথম ভিডিওর আইডি নিয়ে নিচ্ছি
+      if (!videoId) {
+        const searchRes = await axios.get(`${baseApi}/ytFullSearch?songName=${encodeURIComponent(query)}`);
+        const videos = searchRes.data;
+        if (!videos || videos.length === 0) throw new Error("কোন ভিডিও পাওয়া যায়নি");
+        videoId = videos[0].id;
       }
 
-      const pass = new PassThrough();
-      dlStream.pipe(pass);
-      pass.path = `${sanitize(videoInfo.title)}.${ext}`;
+      // ডাউনলোড লিংক আনার জন্য API কল
+      const { data: dlData } = await axios.get(`${baseApi}/ytDl3?link=${videoId}&format=mp4&quality=3`);
+      if (!dlData.downloadLink) throw new Error("ডাউনলোড লিংক পাওয়া যায়নি");
 
-      dlStream.on("error", (e) => log.error(`ytdl error: ${e.message}`));
+      // টেম্প ফাইল নাম
+      const fileName = `yt_${videoId}.mp4`;
+      const filePath = `/tmp/${fileName}`;  // রিপ্লিটে /tmp কাজ করে
 
-      try { api.setMessageReaction("✅", event.messageID, () => {}, true); } catch {}
+      // ডাউনলোড করে ফাইল সেভ
+      const response = await axios.get(dlData.downloadLink, { responseType: "arraybuffer" });
+      fs.writeFileSync(filePath, Buffer.from(response.data));
 
-      const emoji = mode === "video" ? "🎬" : "🎵";
-      return api.sendMessage(
+      // মেসেঞ্জারে পাঠানো
+      await api.sendMessage(
         {
-          body:
-            `${emoji} ${videoInfo.title}\n` +
-            `👤 ${videoInfo.author?.name || "Unknown"}\n` +
-            `⏱️ ${videoInfo.duration?.timestamp || "?"}\n` +
-            (mode === "audio" ? "🔊 অডিও ফর্ম্যাট (৫ মিনিটের বেশি)\n" : "") +
-            `👁️ ${formatViews(videoInfo.views)}`,
-          attachment: pass,
+          body: `🎬 ${dlData.title}\n📀 Quality: ${dlData.quality || "480p"}`,
+          attachment: fs.createReadStream(filePath),
         },
-        threadID
+        threadID,
+        () => {
+          // ফাইল ডিলিট করে দেওয়া
+          try { fs.unlinkSync(filePath); } catch(e) {}
+        },
+        messageID
       );
 
-    } catch (err) {
-      log.error(`video ব্যর্থ: ${err.message}`);
-      try { api.setMessageReaction("⚠️", event.messageID, () => {}, true); } catch {}
+      try { api.setMessageReaction("✅", messageID, () => {}, true); } catch {}
 
-      // Fallback — send link
+    } catch (err) {
+      console.error("Video error:", err);
+      try { api.setMessageReaction("⚠️", messageID, () => {}, true); } catch {}
       return api.sendMessage(
-        `⚠️ ডাউনলোড ব্যর্থ হয়েছে।\n\n` +
-        `🎬 ${videoInfo.title}\n` +
-        `⏱️ ${videoInfo.duration?.timestamp}\n` +
-        `🔗 YouTube Link:\n${videoInfo.url}\n\n` +
-        `ত্রুটি: ${err.message?.slice(0, 100)}`,
+        `❌ ভিডিও ডাউনলোড ব্যর্থ হয়েছে।\n${err.message || "অজানা ত্রুটি"}`,
         threadID
       );
     }
   },
 };
-
-function sanitize(name) {
-  return (name || "video").replace(/[^\w\u0980-\u09FF _-]/g, "").slice(0, 60);
-}
-
-function formatViews(n) {
-  if (!n) return "?";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M views";
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K views";
-  return `${n} views`;
-}
