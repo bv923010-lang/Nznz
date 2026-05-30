@@ -1,29 +1,32 @@
-/** Don't change credits bro i will fix¯\_(ツ)_/¯ **/
+"use strict";
 const axios = require("axios");
 const fs = require("fs-extra");
 const path = require("path");
 
-module.exports.config = {
-  name: "wow",
-  version: "1.1.0",
-  hasPermssion: 0,
-  credits: "BELAL BOTX666",
-  description: "SAD VIDEO STREAMS",
-  commandCategory: "video",
-  usages: "sad video",
-  cooldowns: 5,
-  dependencies: {
-    "axios": "",
-    "fs-extra": ""
-  }
-};
+module.exports = {
+  config: {
+    name: "wow",
+    aliases: ["sad", "sadvideo"],
+    version: "3.3.0", // আপনার ফর্মের নিয়ম অনুযায়ী আপডেট
+    author: "BELAL BOTX666",
+    countDown: 5,
+    role: 0,
+    hasPermssion: 0,
+    shortDescription: "র্যান্ডম স্যাড ভিডিও দেখার কমান্ড",
+    category: "video",
+    guide: { en: "{pn}" }
+  },
 
-module.exports.run = async ({ api, event }) => {
-  try {
-    const textLines = ["┄┉❈✡️⋆⃝চাঁদেড়~পাহাড়✿⃝🪬❈┉┄"];
-    const textOutput = textLines[Math.floor(Math.random() * textLines.length)];
+  onStart: async function ({ api, event }) {
+    const { threadID, messageID, senderID } = event;
 
-    const videoLinks = [ 
+    // ১. শুরুতে ⏳ রিয়্যাকশন দিয়ে প্রসেসিং স্টার্ট করা
+    try { api.setMessageReaction("⏳", messageID, () => {}, true); } catch {}
+
+    const hi = ["HOT girls] \n┄┉❈✡️⋆⃝চাঁদেড়~পাহাড়✿⃝🪬❈┉┄"];
+    const know = hi[Math.floor(Math.random() * hi.length)];
+    
+    const link = [ 
       "https://i.imgur.com/wplkWei.mp4",
       "https://i.imgur.com/rJvUfXX.mp4",
       "https://i.imgur.com/YqsGcBv.mp4",
@@ -114,44 +117,48 @@ module.exports.run = async ({ api, event }) => {
       "https://i.imgur.com/eU1ICjP.mp4"
     ];
 
-    const randomLink = videoLinks[Math.floor(Math.random() * videoLinks.length)];
+    const randomLink = link[Math.floor(Math.random() * link.length)];
     
-    // ক্যাশ ফোল্ডারের পাথ নিখুঁত করা হয়েছে
-    const cacheDir = path.join(__dirname, "cache");
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
-    const filePath = path.join(cacheDir, `wow_${event.senderID}.mp4`);
+    // আপনার ফর্মের নিয়ম অনুযায়ী অফিশিয়াল 'tmp' ফোল্ডার পাথ
+    const cacheDir = path.join(process.cwd(), "tmp");
+    await fs.ensureDir(cacheDir);
+    
+    // ইউনিক ফাইল নেম (যাতে কোনো জ্যাম বা ওভাররাইট না হয়)
+    const filePath = path.join(cacheDir, `wow_${senderID}_${Date.now()}.mp4`);
 
-    api.sendMessage("Please wait master, sending your video... ⏳", event.threadID, event.messageID);
+    try {
+      // আধুনিক Axios Stream Pipe পদ্ধতি (৩০ সেকেন্ড টাইমআউট সহ)
+      const response = await axios.get(randomLink, {
+        responseType: "stream",
+        timeout: 30000,
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+      });
 
-    // Axios ব্যবহার করে হাই-স্পিড মেমোরি স্ট্রিম ডাউনলোড
-    const response = await axios({
-      method: "GET",
-      url: randomLink,
-      responseType: "stream"
-    });
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
 
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
+      await new Promise((resolve, reject) => {
+        writer.on("finish", resolve);
+        writer.on("error", reject);
+      });
 
-    writer.on("finish", () => {
-      api.sendMessage({
-        body: `「 ${textOutput} 」\n\nOwner: ${module.exports.config.credits}`,
+      // সফল হলে ✅ রিয়্যাকশন
+      try { api.setMessageReaction("✅", messageID, () => {}, true); } catch {}
+
+      // ভিডিও সেন্ড করা
+      return api.sendMessage({
+        body: `「 ${know} 」`,
         attachment: fs.createReadStream(filePath)
-      }, event.threadID, () => {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath); // পাঠানোর পর ফাইল ডিলেট করে স্টোরেজ ক্লিন রাখবে
-        }
-      }, event.messageID);
-    });
+      }, threadID, () => {
+        // পাঠানোর সাথে সাথে ক্যাশ ফাইল ডিলিট
+        fs.remove(filePath).catch(() => {});
+      }, messageID);
 
-    writer.on("error", (err) => {
-      api.sendMessage(`ফাইল রাইট করতে সমস্যা হয়েছে: ${err.message}`, event.threadID, event.messageID);
-    });
-
-  } catch (error) {
-    api.sendMessage(`ভিডিওটি পাঠাতে সমস্যা হয়েছে মাস্টার! এরর: ${error.message}`, event.threadID, event.messageID);
+    } catch (e) {
+      try { api.setMessageReaction("❌", messageID, () => {}, true); } catch {}
+      if (fs.existsSync(filePath)) await fs.remove(filePath).catch(() => {});
+      return api.sendMessage(`❌ ত্রুটি: ভিডিও লোড করা সম্ভব হয়নি।`, threadID, messageID);
+    }
   }
 };
-        
+      
