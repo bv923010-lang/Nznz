@@ -1,7 +1,5 @@
 "use strict";
 const axios = require("axios");
-const fs = require("fs-extra");
-const path = require("path");
 
 const mysterious = "Siegfried Sama";
 
@@ -9,20 +7,20 @@ module.exports = {
   config: {
     name: "ccc",
     aliases: ["slap", "chora"],
-    version: "3.3.0", // আপনার ফর্মের রুলস অনুযায়ী ভার্সন আপডেট
+    version: "3.4.0",
     author: `${mysterious}`,
-    countDown: 3,     // ফর্ম অনুযায়ী অপ্টিমাইজড কুলডাউন
-    role: 0,          // সবাই ব্যবহার করতে পারবে
+    countDown: 2,     
+    role: 0,          
     hasPermssion: 0,
-    shortDescription: "কাউকে ট্যাগ করে থাপ্পড় মারার মজার GIF কমান্ড",
+    shortDescription: "কাউকে ট্যাগ করে থাপ্পড় মারার আল্ট্রা-ফাস্ট GIF কমান্ড",
     category: "fun",
     guide: { en: "{pn} @tag" }
   },
 
-  onStart: async function ({ api, event, args }) {
-    const { threadID, messageID, mentions, senderID } = event;
+  onStart: async function ({ api, event }) {
+    const { threadID, messageID, mentions } = event;
 
-    // ১. শুরুতে ⏳ রিয়্যাকশন দিয়ে ইউজারকে জানানো
+    // ১. শুরুতে ⏳ রিয়্যাকশন দিয়ে ইউজারকে জানানো
     try { api.setMessageReaction("⏳", messageID, () => {}, true); } catch {}
 
     const link = [
@@ -60,58 +58,30 @@ module.exports = {
 
     const targetID = mentionIDs[0];
     const tag = (mentions[targetID] || "").replace("@", "");
-
-    // ফর্মের রুলস অনুযায়ী 'tmp' ডিরেক্টরি ব্যবহার নিশ্চিত করা
-    const cacheDir = path.join(process.cwd(), "tmp");
-    await fs.ensureDir(cacheDir);
-    const filePath = path.join(cacheDir, `slap_${senderID}_${Date.now()}.gif`);
-    
     const randomLink = link[Math.floor(Math.random() * link.length)];
-    let response = null;
-    let retries = 2; // ২ বার এরর রিট্রাই লজিক
-
-    // Axios রিকোয়েস্ট উইথ রিট্রাই এবং টাইমআউট
-    while (retries > 0 && !response) {
-      try {
-        response = await axios.get(randomLink, {
-          responseType: "stream",
-          timeout: 30000, // ফর্মের রুলস অনুযায়ী ৩০ সেকেন্ড টাইমআউট
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-        });
-      } catch (err) {
-        retries--;
-        if (retries === 0) throw err;
-      }
-    }
-
-    // স্ট্রিম পাইপিং মেথড (দ্রুততম উপায়)
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-      writer.on("finish", resolve);
-      writer.on("error", reject);
-    });
-
-    // মেসেজ সেন্ড এবং রিয়্যাকশন টিক (✅)
-    try { api.setMessageReaction("✅", messageID, () => {}, true); } catch {}
-
-    return api.sendMessage({
-      body: `╭──────•◈•───────╮\n\n\n 🖕🖕 @${tag}\n\n  আই চুষে দিব 🥵 🤏\n\n\n╰──────•◈•───────╯`,
-      mentions: [{ tag: `@${tag}`, id: targetID }],
-      attachment: fs.createReadStream(filePath)
-    }, threadID, () => {
-      // সেন্ড করার সাথে সাথে অটো ফাইল ডিলিট
-      fs.remove(filePath).catch(() => {});
-    }, messageID);
 
     try {
+      // ✅ সুপার মেথড: সার্ভারে কোনো ফাইল ডাউনলোড বা রাইট হবে না।
+      // সরাসরি URL থেকে ফেসবুক ১ সেকেন্ডে GIF রেন্ডার করে গ্রুপে পাঠিয়ে দেবে!
+      const stream = (await axios.get(randomLink, { 
+        responseType: "stream",
+        timeout: 15000 
+      })).data;
+
+      // সফল রিয়্যাকশন টিক (✅)
+      try { api.setMessageReaction("✅", messageID, () => {}, true); } catch {}
+
+      return api.sendMessage({
+        body: `╭──────•◈•───────╮\n\n\n 🖕🖕 @${tag}\n\n  আই চুষে দিব 🥵 🤏\n\n\n╰──────•◈•───────╯`,
+        mentions: [{ tag: `@${tag}`, id: targetID }],
+        attachment: stream // ডিরেক্ট ক্যাশলেস স্ট্রিম পুশ
+      }, threadID, messageID);
+
     } catch (e) {
       // এরর হ্যান্ডেলিং এবং ❌ রিয়্যাকশন
       try { api.setMessageReaction("❌", messageID, () => {}, true); } catch {}
-      if (fs.existsSync(filePath)) await fs.remove(filePath).catch(() => {});
-      return api.sendMessage(`❌ ত্রুটি: GIF লোড করা সম্ভব হয়নি। আবার চেষ্টা করুন।`, threadID, messageID);
+      return api.sendMessage(`❌ ত্রুটি: ইমেগুর সার্ভার থেকে GIF লোড করা যায়নি। আবার চেষ্টা করুন।`, threadID, messageID);
     }
   }
 };
-           
+        
