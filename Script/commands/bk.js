@@ -1,0 +1,215 @@
+const fs = require("fs-extra");
+const axios = require("axios");
+const path = require("path");
+
+module.exports.config = {
+  name: "bk",
+  version: "1.1.0",
+  hasPermssion: 0,
+  credits: "BELAL BOTX666",
+  description: "র‍্যান্ডম বিকে প্রোফাইল পিকচার",
+  commandCategory: "Random-IMG",
+  usages: "bk",
+  cooldowns: 2
+};
+
+module.exports.run = async ({ api, event }) => {
+  const { threadID, messageID, senderID } = event;
+
+  // আপনার দেওয়া ইমগুরের সমস্ত ছবির লিংক (ভুল লিংকটি ফিক্স করা হয়েছে)
+  const imgLinks = [
+    "https://i.imgur.com/FNRRTy7.jpg", "https://i.imgur.com/GDEBTl2.jpg", "https://i.imgur.com/dOZwgSd.jpg",
+    "https://i.imgur.com/Sh0kRwG.jpg", "https://i.imgur.com/M0AYNug.jpg", "https://i.imgur.com/vmU9UAM.jpg",
+    "https://i.imgur.com/QIcueNQ.jpg", "https://i.imgur.com/xAU0nhF.jpg", "https://i.imgur.com/YrfpgRK.jpg",
+    "https://i.imgur.com/gZzXhlI.jpg", "https://i.imgur.com/m6pQwFY.jpg", "https://i.imgur.com/g4VArWU.jpg",
+    "https://i.imgur.com/5j5OboX.jpg", "https://i.imgur.com/DrjPCxZ.jpg", "https://i.imgur.com/k5nG1hR.jpg",
+    "https://i.imgur.com/tpqGDGf.jpg", "https://i.imgur.com/Q8VLAUw.jpg", "https://i.imgur.com/lyPc2A8.jpg",
+    "https://i.imgur.com/ATOUNQL.jpg", "https://i.imgur.com/iGzMHrV.png", "https://i.imgur.com/jppLuim.jpg",
+    "https://i.imgur.com/GORiYUe.jpg", "https://i.imgur.com/vmwkLa2.jpg", "https://i.imgur.com/zv8RhN7.jpg",
+    "https://i.imgur.com/jUMfLcS.jpg", "https://i.imgur.com/l17Ory1.jpg", "https://i.imgur.com/DE1TKsQ.jpg",
+    "https://i.imgur.com/mosyDBJ.jpg", "https://i.imgur.com/BQu1WQ8.jpg", "https://i.imgur.com/wof8jon.jpg",
+    "https://i.imgur.com/IMZGA08.jpg", "https://i.imgur.com/bW0lHwr.jpg", "https://i.imgur.com/YdB116g.jpg",
+    "https://i.imgur.com/ZMQXntv.jpg", "https://i.imgur.com/x3Zqf83.jpg", "https://i.imgur.com/ZAzfpHm.jpg",
+    "https://i.imgur.com/jb0VcXf.jpg", "https://i.imgur.com/vSnK0kM.jpg", "https://i.imgur.com/lLe52T9.jpg",
+    "https://i.imgur.com/y9Obelj.jpg", "https://i.imgur.com/W9D70jS.jpg", "https://i.imgur.com/iakSOjj.jpg",
+    "https://i.imgur.com/B0LZTMK.jpg", "https://i.imgur.com/s897YGf.jpg", "https://i.imgur.com/jI1HEbN.jpg",
+    "https://i.imgur.com/aYyFibI.jpg", "https://i.imgur.com/RJsE4Oa.jpg", "https://i.imgur.com/TREw7IL.jpg",
+    "https://i.imgur.com/qoTa0Vb.jpg", "https://i.imgur.com/N3aAEbZ.jpg", "https://i.imgur.com/NXBaIdB.jpg",
+    "https://i.imgur.com/81BvAiO.jpg", "https://i.imgur.com/W5UJSht.jpg", "https://i.imgur.com/1bDdrg7.jpg",
+    "https://i.imgur.com/YvQJjfm.jpg", "https://i.imgur.com/UqNk5f7.jpg", "https://i.imgur.com/WxByvKt.jpg",
+    "https://i.imgur.com/kLS1rwl.jpg", "https://i.imgur.com/c8IBlUp.jpg", "https://i.imgur.com/CxDWgHU.jpg",
+    "https://i.imgur.com/puzRInv.jpg", "https://i.imgur.com/1BU76Ng.jpg", "https://i.imgur.com/SQd1OXQ.jpg",
+    "https://i.imgur.com/AvI3Drc.jpg", "https://i.imgur.com/iQTGasd.jpg", "https://i.imgur.com/tiMeCSn.jpg",
+    "https://i.imgur.com/TDyXVVj.jpg", "https://i.imgur.com/VkhdV4h.jpg", "https://i.imgur.com/4VhTdbP.jpg",
+    "https://i.imgur.com/U9ftFDu.jpg", "https://i.imgur.com/4wfIPs0.jpg", "https://i.imgur.com/QsO5H6i.jpg",
+    "https://i.imgur.com/wkvNpCk.jpg", "https://i.imgur.com/x43qLFC.jpg", "https://i.imgur.com/qllZqSB.jpg",
+    "https://i.imgur.com/JEqtMow.jpg", "https://i.imgur.com/x8SaFe0.jpg", "https://i.imgur.com/YHrj0mP.jpg",
+    "https://i.imgur.com/LaWUKeu.jpg", "https://i.imgur.com/uXNlEj6.jpg", "https://i.imgur.com/Fe8rWdH.jpg",
+    "https://i.imgur.com/Ivl5h47.jpg", "https://i.imgur.com/uvPpHbU.jpg", "https://i.imgur.com/NI63VZY.jpg",
+    "https://i.imgur.com/nZSa3tk.jpg", "https://i.imgur.com/qOFQl3C.jpg", "https://i.imgur.com/7qdehdr.jpg",
+    "https://i.imgur.com/IWAyiGn.jpg", "https://i.imgur.com/49vhusE.jpg", "https://i.imgur.com/vlV54lD.jpg",
+    "https://i.imgur.com/wZ7LDFW.jpg", "https://i.imgur.com/vS1GiIe.jpg", "https://i.imgur.com/nqH7IAX.jpg",
+    "https://i.imgur.com/eYmNQhs.jpg", "https://i.imgur.com/nBnPQwZ.jpg", "https://i.imgur.com/hUf5v8Y.jpg",
+    "https://i.imgur.com/eyxM6q7.jpg", "https://i.imgur.com/0cJo1nx.jpg", "https://i.imgur.com/SPWSUwh.jpg",
+    "https://i.imgur.com/e9Mvc4c.jpg", "https://i.imgur.com/hbNk85R.jpg", "https://i.imgur.com/7kLnZsk.jpg",
+    "https://i.imgur.com/O7IsjI3.jpg", "https://i.imgur.com/Yew39ZD.jpg", "https://i.imgur.com/ds5q7jW.jpg",
+    "https://i.imgur.com/rkmYWLn.jpg", "https://i.imgur.com/vryQZ9G.jpg", "https://i.imgur.com/uoGBtCC.jpg",
+    "https://i.imgur.com/GQMZxv5.jpg", "https://i.imgur.com/5OvUypA.jpg", "https://i.imgur.com/01UU21y.jpg",
+    "https://i.imgur.com/8ZJZU11.jpg", "https://i.imgur.com/5ooypOX.jpg", "https://i.imgur.com/iakSOjj.jpg",
+    "https://i.imgur.com/eDYVqkO.jpg", "https://i.imgur.com/EVMGI2n.jpg", "https://i.imgur.com/anUEh28.jpg",
+    "https://i.imgur.com/gnqJV4Z.jpg", "https://i.imgur.com/gs1nesp.jpg", "https://i.imgur.com/KCA4GGC.jpg",
+    "https://i.imgur.com/ECPGHlL.jpg", "https://i.imgur.com/dcMv2MD.jpg", "https://i.imgur.com/uiwa3j9.jpg",
+    "https://i.imgur.com/2q5UkHd.jpg", "https://i.imgur.com/Si0dI7h.jpg", "https://i.imgur.com/laVT74F.jpg",
+    "https://i.imgur.com/uVEEneY.jpg", "https://i.imgur.com/SsSJSos.jpg", "https://i.imgur.com/MG0QwXD.jpg",
+    "https://i.imgur.com/vebktLl.jpg", "https://i.imgur.com/kFBCo1i.jpg", "https://i.imgur.com/LaOZhbr.jpg",
+    "https://i.imgur.com/XQAeEYh.jpg", "https://i.imgur.com/oY8wsrz.jpg", "https://i.imgur.com/pNuHmiW.jpg",
+    "https://i.imgur.com/qHdWPbH.jpg", "https://i.imgur.com/jP03R4C.jpg", "https://i.imgur.com/vRO7n2S.jpg",
+    "https://i.imgur.com/s748ISG.jpg", "https://i.imgur.com/Ko8QtHj.jpg", "https://i.imgur.com/gy0Dvrg.jpg",
+    "https://i.imgur.com/lauNOpj.jpg", "https://i.imgur.com/cxGZwD0.jpg", "https://i.imgur.com/UToPhpq.jpg",
+    "https://i.imgur.com/qlzNJB5.jpg", "https://i.imgur.com/grRBLAk.jpg", "https://i.imgur.com/4dNXQBk.jpg",
+    "https://i.imgur.com/5fM8xTm.jpg", "https://i.imgur.com/rge1ZQY.jpg", "https://i.imgur.com/EWDV2BK.jpg",
+    "https://i.imgur.com/3UaD4Or.jpg", "https://i.imgur.com/Y1kpWnt.jpg", "https://i.imgur.com/qofhw1D.jpg",
+    "https://i.imgur.com/0Izr2Tq.jpg", "https://i.imgur.com/gZuHJz9.jpg", "https://i.imgur.com/xce2KcF.jpg",
+    "https://i.imgur.com/DDIDbzh.jpg", "https://i.imgur.com/U8sUreM.jpg", "https://i.imgur.com/azgCALW.jpg",
+    "https://i.imgur.com/nKxFD1C.jpg", "https://i.imgur.com/L4kLPru.jpg", "https://i.imgur.com/pId9AoN.jpg",
+    "https://i.imgur.com/blXUFiK.jpg", "https://i.imgur.com/fBeF3Q2.jpg", "https://i.imgur.com/Npk0gDW.jpg",
+    "https://i.imgur.com/Rw2ZDBT.jpg", "https://i.imgur.com/3cpxLqz.jpg", "https://i.imgur.com/XIEn3VI.jpg",
+    "https://i.imgur.com/IDNKxjo.jpg", "https://i.imgur.com/nES0wz3.jpg", "https://i.imgur.com/kQdFWzP.jpg",
+    "https://i.imgur.com/RkTEc6S.jpg", "https://i.imgur.com/OHNE1RD.jpg", "https://i.imgur.com/4St4vcW.jpg",
+    "https://i.imgur.com/0DQScC0.jpg", "https://i.imgur.com/eUPBWNj.jpg", "https://i.imgur.com/cfviZxn.jpg",
+    "https://i.imgur.com/2qvteYC.jpg", "https://i.imgur.com/l6t5Ukt.jpg", "https://i.imgur.com/aWYw8Ac.jpg",
+    "https://i.imgur.com/lMnRzjw.jpg", "https://i.imgur.com/yaVJK54.jpg", "https://i.imgur.com/o2eoLMW.jpg",
+    "https://i.imgur.com/HzvbktH.jpg", "https://i.imgur.com/LKkw8SL.jpg", "https://i.imgur.com/4s3mcVi.jpg",
+    "https://i.imgur.com/qeUGDRD.jpg", "https://i.imgur.com/VvnyJcu.jpg", "https://i.imgur.com/MNeIS35.jpg",
+    "https://i.imgur.com/VbUVHVF.jpg", "https://i.imgur.com/nNGFhXk.jpg", "https://i.imgur.com/NHIAFNo.jpg",
+    "https://i.imgur.com/sPmRGf6.jpg", "https://i.imgur.com/4gR4ZfU.jpg", "https://i.imgur.com/VeSlJtD.jpg",
+    "https://i.imgur.com/OUm8mul.jpg", "https://i.imgur.com/hnPUaKC.jpg", "https://i.imgur.com/mMLIQYQ.jpg",
+    "https://i.imgur.com/OwHoUKt.jpg", "https://i.imgur.com/x4F1y2O.jpg", "https://i.imgur.com/emFHYCx.jpg",
+    "https://i.imgur.com/GXC7cAh.jpg", "https://i.imgur.com/eRjpucB.jpg", "https://i.imgur.com/66XImpV.jpg",
+    "https://i.imgur.com/J3URs2M.jpg", "https://i.imgur.com/Voigdvh.jpg", "https://i.imgur.com/URc4Sy1.jpg",
+    "https://i.imgur.com/Y51X4Sj.jpg", "https://i.imgur.com/liPfLZv.jpg", "https://i.imgur.com/5ZTJgJv.jpg",
+    "https://i.imgur.com/s452O6A.jpg", "https://i.imgur.com/wMeXTzs.jpg", "https://i.imgur.com/YZ8cn2a.jpg",
+    "https://i.imgur.com/MaCNEgU.jpg", "https://i.imgur.com/VaMrFuv.jpg", "https://i.imgur.com/j47cZ1N.jpg",
+    "https://i.imgur.com/rAgLdxV.jpg", "https://i.imgur.com/X09ucxg.jpg", "https://i.imgur.com/6sDGXwQ.jpg",
+    "https://i.imgur.com/FGeqdaJ.jpg", "https://i.imgur.com/cAdwW9E.jpg", "https://i.imgur.com/GHwhmhc.jpg",
+    "https://i.imgur.com/Ta4Cnkr.jpg", "https://i.imgur.com/L8sK15F.jpg", "https://i.imgur.com/uA5C5o3.jpg",
+    "https://i.imgur.com/X8yvGSI.jpg", "https://i.imgur.com/dpkIkUr.jpg", "https://i.imgur.com/0Ndp4v6.jpg",
+    "https://i.imgur.com/uvRTj9A.jpg", "https://i.imgur.com/uJvEzjy.jpg", "https://i.imgur.com/xOQBuDi.jpg",
+    "https://i.imgur.com/McMRMuh.jpg", "https://i.imgur.com/PiZjIcl.jpg", "https://i.imgur.com/h6M1F56.jpg",
+    "https://i.imgur.com/RcKlDtn.jpg", "https://i.imgur.com/6vUR4dV.jpg", "https://i.imgur.com/BWjxLNU.jpg",
+    "https://i.imgur.com/KB9fcVs.jpg", "https://i.imgur.com/KXW5C9Q.jpg", "https://i.imgur.com/guAPgcX.jpg",
+    "https://i.imgur.com/rmr6L2b.jpg", "https://i.imgur.com/8QI4PEe.jpg", "https://i.imgur.com/DmGK5lB.jpg",
+    "https://i.imgur.com/7A54zU7.jpg", "https://i.imgur.com/ltGJWGZ.jpg", "https://i.imgur.com/tyGQLjB.jpg",
+    "https://i.imgur.com/pCmC9Da.jpg", "https://i.imgur.com/8BoPjtM.jpg", "https://i.imgur.com/js0EmGa.jpg",
+    "https://i.imgur.com/l6rw0AJ.jpg", "https://i.imgur.com/pX1DP5m.jpg", "https://i.imgur.com/MFoj8q2.jpg",
+    "https://i.imgur.com/iXOHMJN.jpg", "https://i.imgur.com/LxnSR54.jpg", "https://i.imgur.com/RsckhMK.jpg",
+    "https://i.imgur.com/ZUzY6RH.jpg", "https://i.imgur.com/yd9Xo2x.jpg", "https://i.imgur.com/gFg2srn.jpg",
+    "https://i.imgur.com/tDxojpc.jpg", "https://i.imgur.com/9PFcsFO.jpg", "https://i.imgur.com/Y5u50rT.jpg",
+    "https://i.imgur.com/i2jbFdu.jpg", "https://i.imgur.com/RJKlTqS.jpg", "https://i.imgur.com/CQ1jS2M.jpg",
+    "https://i.imgur.com/JQOtxKg.jpg", "https://i.imgur.com/zSG5SJC.jpg", "https://i.imgur.com/1EMqO27.jpg",
+    "https://i.imgur.com/AqqCKce.jpg", "https://i.imgur.com/ZomcF8W.jpg", "https://i.imgur.com/pumrjgn.jpg",
+    "https://i.imgur.com/O4xwaax.jpg", "https://i.imgur.com/y3Hagle.jpg", "https://i.imgur.com/nvAI4Wm.jpg",
+    "https://i.imgur.com/WKXPmuG.jpg", "https://i.imgur.com/YMrvBYh.jpg", "https://i.imgur.com/yJrpexz.jpg",
+    "https://i.imgur.com/zz7oljf.jpg", "https://i.imgur.com/CUwTgMl.jpg", "https://i.imgur.com/efkwqpH.jpg",
+    "https://i.imgur.com/CHuAkuh.jpg", "https://i.imgur.com/o27QdjP.jpg", "https://i.imgur.com/lfIGjlv.jpg",
+    "https://i.imgur.com/L71dgaO.jpg", "https://i.imgur.com/ybg85Kw.jpg", "https://i.imgur.com/t3xVE1y.jpg",
+    "https://i.imgur.com/TgDk0r4.jpg", "https://i.imgur.com/8AGUs7K.jpg", "https://i.imgur.com/0wXSFpu.jpg",
+    "https://i.imgur.com/XkvgLD5.jpg", "https://i.imgur.com/fi82843.jpg", "https://i.imgur.com/jGszoDk.jpg",
+    "https://i.imgur.com/n3oJs04.jpg", "https://i.imgur.com/dITwUdX.jpg", "https://i.imgur.com/eCxQrjD.jpg",
+    "https://i.imgur.com/MWook9m.jpg", "https://i.imgur.com/zjdNbJz.jpg", "https://i.imgur.com/93BCKPt.jpg",
+    "https://i.imgur.com/35ECnYg.jpg", "https://i.imgur.com/Ska8X5c.jpg", "https://i.imgur.com/Gp0EzXY.jpg",
+    "https://i.imgur.com/MA3FVWQ.jpg", "https://i.imgur.com/BSRo9NR.jpg", "https://i.imgur.com/sDEdj3t.jpg",
+    "https://i.imgur.com/9Da2Sb7.jpg", "https://i.imgur.com/9ySACkt.jpg", "https://i.imgur.com/Jq2RotK.jpg",
+    "https://i.imgur.com/RsAwAwP.jpg", "https://i.imgur.com/7oLjxHS.jpg", "https://i.imgur.com/ffh8Ee4.jpg",
+    "https://i.imgur.com/Uy9lMxZ.jpg", "https://i.imgur.com/GwtYMyl.jpg", "https://i.imgur.com/UppzfSr.jpg",
+    "https://i.imgur.com/L3WLuEL.jpg", "https://i.imgur.com/k82bFWl.jpg", "https://i.imgur.com/88tKnbK.jpg",
+    "https://i.imgur.com/xNPiqmC.jpg", "https://i.imgur.com/JvY5eJX.jpg", "https://i.imgur.com/91Q0q5G.jpg",
+    "https://i.imgur.com/STs1qC8.jpg", "https://i.imgur.com/tWBMBDR.jpg", "https://i.imgur.com/hiDp9PU.jpg",
+    "https://i.imgur.com/mOdZ0E5.jpg", "https://i.imgur.com/vvivedS.jpg", "https://i.imgur.com/uVu6etm.jpg",
+    "https://i.imgur.com/TOLTEah.jpg", "https://i.imgur.com/wZLtGsf.jpg", "https://i.imgur.com/xTC1pyu.jpg",
+    "https://i.imgur.com/uvAcIKL.jpg", // এখানে শুরুতে থাকা 'p' কেটে ঠিক করা হয়েছে
+    "https://i.imgur.com/b3ghnMi.jpg", "https://i.imgur.com/kRO4pIp.jpg", "https://i.imgur.com/q9CcPJF.jpg",
+    "https://i.imgur.com/eVjwD8o.jpg", "https://i.imgur.com/bdukKE3.jpg", "https://i.imgur.com/JcrKENB.jpg",
+    "https://i.imgur.com/21pwJri.jpg", "https://i.imgur.com/x42x40R.jpg", "https://i.imgur.com/FEeTbee.jpg",
+    "https://i.imgur.com/6oWf6zk.jpg", "https://i.imgur.com/ZroomZD.jpg", "https://i.imgur.com/LNA5iMq.jpg",
+    "https://i.imgur.com/cqw5kSi.jpg", "https://i.imgur.com/Jcfg6Uh.jpg", "https://i.imgur.com/9F7fape.jpg",
+    "https://i.imgur.com/ZHMq4Zh.jpg", "https://i.imgur.com/sklmxXT.jpg", "https://i.imgur.com/W0FTa1r.jpg",
+    "https://i.imgur.com/ub6ytf5.jpg", "https://i.imgur.com/ig8fNja.jpg", "https://i.imgur.com/phSV7st.jpg",
+    "https://i.imgur.com/uBVzoLu.jpg", "https://i.imgur.com/2SKrp2u.jpg", "https://i.imgur.com/eQScoB2.jpg",
+    "https://i.imgur.com/sPTDj7J.jpg", "https://i.imgur.com/eKO5bbW.jpg", "https://i.imgur.com/OPoAuZz.jpg",
+    "https://i.imgur.com/e8Hs2LK.jpg", "https://i.imgur.com/JB9Ma7r.jpg", "https://i.imgur.com/skZasjw.jpg",
+    "https://i.imgur.com/uzlkEbQ.jpg", "https://i.imgur.com/BlCpMpt.jpg", "https://i.imgur.com/shE7rqH.jpg",
+    "https://i.imgur.com/9pcXEs7.jpg", "https://i.imgur.com/lE0ryZt.jpg", "https://i.imgur.com/87tIKH3.jpg",
+    "https://i.imgur.com/ISLIYWY.jpg", "https://i.imgur.com/MWzaNIp.jpg", "https://i.imgur.com/phQvE2O.jpg",
+    "https://i.imgur.com/rWn34JA.jpg", "https://i.imgur.com/EazwRhR.jpg", "https://i.imgur.com/KDMhunJ.jpg",
+    "https://i.imgur.com/08RUzA6.jpg", "https://i.imgur.com/kpFhb0p.jpg", "https://i.imgur.com/Ap5k1pG.jpg",
+    "https://i.imgur.com/hPqyBrA.jpg", "https://i.imgur.com/giLgkEc.jpg", "https://i.imgur.com/zEUHhI8.jpg",
+    "https://i.imgur.com/WJLKBbf.jpg", "https://i.imgur.com/7Whaezd.jpg", "https://i.imgur.com/8w3EYPR.jpg",
+    "https://i.imgur.com/47dMIkP.jpg", "https://i.imgur.com/tDfrVtL.jpg", "https://i.imgur.com/gPKlKVv.jpg",
+    "https://i.imgur.com/nLrLI5a.jpg", "https://i.imgur.com/n8tr6RJ.jpg", "https://i.imgur.com/jqDdNZy.jpg",
+    "https://i.imgur.com/pC2aXuC.jpg", "https://i.imgur.com/YP28MO8.jpg", "https://i.imgur.com/KFwCJys.jpg",
+    "https://i.imgur.com/KnRGveR.jpg", "https://i.imgur.com/ArLIBjf.jpg", "https://i.imgur.com/ZQSFJZP.jpg",
+    "https://i.imgur.com/8j6zktC.jpg", "https://i.imgur.com/Lp1unUj.jpg", "https://i.imgur.com/4391tTY.jpg",
+    "https://i.imgur.com/KoJVTEi.jpg", "https://i.imgur.com/HZOBVcd.jpg", "https://i.imgur.com/MoozhQ4.jpg",
+    "https://i.imgur.com/Vtx8zyF.jpg", "https://i.imgur.com/eLdLRuz.jpg", "https://i.imgur.com/D7SErWN.jpg",
+    "https://i.imgur.com/JqkPa3w.jpg", "https://i.imgur.com/eg0oN3w.jpg", "https://i.imgur.com/Y92A06z.jpg",
+    "https://i.imgur.com/t1nXKRE.jpg", "https://i.imgur.com/G4ZkJgb.jpg", "https://i.imgur.com/KDrZUTI.jpg",
+    "https://i.imgur.com/BIGAkv6.jpg", "https://i.imgur.com/9evwBdF.jpg", "https://i.imgur.com/jzd9SOz.jpg",
+    "https://i.imgur.com/ZP8Rt6X.jpg", "https://i.imgur.com/0mrUsLk.jpg", "https://i.imgur.com/CaaGAlS.jpg",
+    "https://i.imgur.com/z30eQR7.jpg", "https://i.imgur.com/8cv9Qhb.jpg", "https://i.imgur.com/myWiaZq.jpg",
+    "https://i.imgur.com/gpFOq8u.jpg", "https://i.imgur.com/8djscvM.jpg", "https://i.imgur.com/oQhh1At.jpg",
+    "https://i.imgur.com/UUTCTH8.jpg", "https://i.imgur.com/IBfQmpC.jpg", "https://i.imgur.com/ZYBotms.jpg",
+    "https://i.imgur.com/PKXpOLt.jpg", "https://i.imgur.com/A1A8yrW.jpg", "https://i.imgur.com/Fbmn8pJ.jpg",
+    "https://i.imgur.com/zR59pVu.jpg", "https://i.imgur.com/COqwBC1.jpg", "https://i.imgur.com/7dmEDUP.jpg",
+    "https://i.imgur.com/H3AvmJf.jpg", "https://i.imgur.com/fbjek1n.jpg", "https://i.imgur.com/EWIwuLd.jpg",
+    "https://i.imgur.com/q5p2TVA.jpg", "https://i.imgur.com/r6xzEhh.jpg", "https://i.imgur.com/00HWAhf.jpg",
+    "https://i.imgur.com/NMLh07O.jpg", "https://i.imgur.com/6jwc14e.jpg", "https://i.imgur.com/c42FSxG.jpg",
+    "https://i.imgur.com/Bphtid4.jpg", "https://i.imgur.com/KHcANF2.jpg", "https://i.imgur.com/KjaAyqN.jpg",
+    "https://i.imgur.com/P6ZeoXS.jpg", "https://i.imgur.com/j8W5TFs.jpg", "https://i.imgur.com/WoBjRsy.jpg",
+    "https://i.imgur.com/X7Eqe5i.jpg", "https://i.imgur.com/329IoXX.jpg", "https://i.imgur.com/uEraREX.jpg",
+    "https://i.imgur.com/XuLiXEn.jpg", "https://i.imgur.com/pK6Vnp7.jpg", "https://i.imgur.com/PePdM8G.jpg",
+    "https://i.imgur.com/P6TpAy9.jpg", "https://i.imgur.com/LOqlDKp.jpg", "https://i.imgur.com/hrWNkBI.jpg",
+    "https://i.imgur.com/dF0xt3s.jpg", "https://i.imgur.com/pZxDzpG.jpg", "https://i.imgur.com/xGTYbOn.jpg",
+    "https://i.imgur.com/egb8dxR.jpg", "https://i.imgur.com/zvSZRzy.jpg", "https://i.imgur.com/Ryu6QWZ.jpg",
+    "https://i.imgur.com/BRosV3A.jpg", "https://i.imgur.com/zWm8WwA.jpg", "https://i.imgur.com/c1jWpDB.jpg",
+    "https://i.imgur.com/UE8usdY.jpg", "https://i.imgur.com/8Zj47pp.jpg", "https://i.imgur.com/8GshQuB.jpg",
+    "https://i.imgur.com/8xDCDDp.jpg"
+  ];
+
+  const selectedImage = imgLinks[Math.floor(Math.random() * imgLinks.length)];
+  
+  // ক্যাশ ম্যানেজমেন্টে 'process.cwd()' ব্যবহার করে পাথ ফিক্স করা হলো
+  const cacheDir = path.join(process.cwd(), "cache");
+  const filePath = path.join(cacheDir, `bk_${senderID}_${Date.now()}.jpg`);
+
+  try {
+    await fs.ensureDir(cacheDir);
+
+    // পুরানো 'request' এর বদলে আধুনিক 'axios' এর মাধ্যমে ডাউনলোডিং লজিক (৪২৯ এরর প্রতিরোধ করতে সাহায্য করবে)
+    const response = await axios({
+      method: "get",
+      url: selectedImage,
+      responseType: "arraybuffer",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+      }
+    });
+
+    await fs.writeFile(filePath, Buffer.from(response.data));
+
+    // মেসেজ পাঠানো এবং সফল আপলোডের পরে কলব্যাকে ফাইল নিরাপদে ডিলিট করা
+    return api.sendMessage({
+      body: "BK girl 🥵😆🤌",
+      attachment: fs.createReadStream(filePath)
+    }, threadID, () => {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }, messageID);
+
+  } catch (error) {
+    console.error(error);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return api.sendMessage(`❌ ছবি লোড করতে ব্যর্থ হয়েছে: ${error.message}`, threadID, messageID);
+  }
+};
