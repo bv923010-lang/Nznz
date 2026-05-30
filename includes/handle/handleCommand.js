@@ -5,7 +5,7 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     const { body = "", senderID, threadID, type } = event;
     if (!body || type === "message_unsend") return;
 
-    // 🛡️ ক্র্যাশ প্রটেকশন সহ প্রিফিক্স ও কনফিগ হ্যান্ডলিং
+    // 🛡️ সম্পূর্ণ ক্র্যাশ প্রটেকশন ও ডেড-লক গার্ড সিস্টেম
     const currentConfig = global.config || {};
     const PREFIX = currentConfig.PREFIX !== undefined ? currentConfig.PREFIX : "/";
     const botID  = currentConfig.botID;
@@ -18,11 +18,6 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     
     // ── [নো-প্রিফিক্স ও প্রিফিক্স ডুয়াল রান ইঞ্জিন লজিক] ──
     const hasPrefix = PREFIX !== "" && bodyTrim.startsWith(PREFIX);
-    
-    // 🛡️ এখানে ক্র্যাশ প্রটেকশন দেওয়া হলো যেন BOT_MODES বা config না থাকলে ক্র্যাশ না করে
-    const isNoPrefixAllowed = currentConfig.BOT_MODES?.noPrefix ?? true; 
-    if (!hasPrefix && !isNoPrefixAllowed) return;
-
     const withoutPrefix = hasPrefix ? bodyTrim.slice(PREFIX.length) : bodyTrim;
     const [commandName, ...args] = withoutPrefix.trim().split(/\s+/);
     // ────────────────────────────────────────────────────────
@@ -33,6 +28,8 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
              || [...global.client.commands.values()].find(c =>
                   c.config?.aliases?.map(a => a.toLowerCase()).includes(commandName.toLowerCase())
                 );
+                
+    // যদি কোনো কমান্ডের নাম না মেলে, তবে সাধারণ চ্যাট মনে করে বট কোনো এরর না দিয়ে চুপ থাকবে
     if (!cmd) return;
 
     // Cooldown — সব framework এর field name সাপোর্ট
@@ -86,4 +83,3 @@ module.exports = ({ api, models, Users, Threads, Currencies }) => {
     }
   };
 };
-        
